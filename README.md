@@ -1,77 +1,40 @@
-<div align="center" style="font-family: charter;">
+# Multi-Robot Rendezvous
+## Data Collection
 
-<h1><i>V-IRL</i>: Grounding Virtual Intelligence in Real Life</h1>
+### step1: Collect google map street view url
+Before data processing, you should prepare a `url.txt` under the `googledata/seed{YOUR_DATA_SEED}/`.
 
-<!-- <p>tl;dr: We build a platform that enables agents to scalably interact with the real-world in a virtual yet realistic environment.</p> -->
-<div>
-    <a href="https://jihanyang.github.io/" target="_blank">Jihan Yang</a><sup>1</sup>,</span>
-    <a href="https://dingry.github.io/" target="_blank">Runyu Ding</a><sup>1</sup>,</span>
-    <a href="https://ellisbrown.github.io/" target="_blank">Ellis Brown</a><sup>2</sup>,</span>
-    <a href="https://xjqi.github.io/" target="_blank">Xiaojuan Qi</a><sup>1</sup>,</span>  
-    <a href="https://www.sainingxie.com/" target="_blank">Saining Xie</a><sup>2</sup>,</span>
-</div>
+Here is an example: [url.txt](docs/resources/url.txt)
 
-<div>
-    <sup>1</sup>The University of Hong Kong&emsp;
-    <sup>2</sup>New York University
-</div>
+You can enter arbitrary position street view by google map like ![streetview_example.png](docs\resources\streetview_example.png)
 
-[project page](https://virl-platform.github.io) | [arXiv](https://arxiv.org/abs/2402.03310)
+Then in the streetview mode, you can go through a route like an agent. Each step you move, copy the url into `url.txt` in order. 
 
-<img src="docs/resources/teaser.png" width="100%"/>
+![streetview_move_example.png](docs\resources\streetview_move_example.png)
 
-</div>
+There is a `X` symbol on the ground to label where the next step is, do not move one step too far away. 
 
-****
-
-### Changelog
-- [2024-04-18] **NEW!!** Release code for benchmark along with installation & curation & evaluation guideline.
-
-- [2024-04-09] **NEW!!** Release code for agents and installation & deployment & running guideline.
-
-- [2024-02-06] Release basic platform code.
-
-### Release Checklist
-- [x] Basic Platform Code 
-- [x] Agents
-  - [x] Peng
-  - [x] Aria
-  - [x] Vivek
-  - [x] RX-399
-  - [x] Imani
-  - [x] Hiro
-  - [x] Ling
-  - [x] Local
-  - [x] Diego
-- [x] Benchmarks
-- [x] Install & Deployment guideline
-- [ ] Platform Document
-
-
-
-### Installation
-Please refer to [INSTALL.md](./docs/INSTALL.md) for installation of `V-IRL`
-
-
-### Getting Started
-Please refer to [GETTING_STARTED.md](./docs/GETTING_STARTED.md) to learn more usage about this project.
-
-
-### FQA
-Please refer to [FQA.md](./docs/FQA.md) to learn solution for some potential issues.
-
-
-### Citation
-If you find this project useful in your research, please consider cite:
-```
-@inproceedings{yang2024virl,
-  title={V-irl: Grounding virtual intelligence in real life},
-  author={Yang, Jihan and Ding, Runyu and Brown, Ellis and Qi, Xiaojuan and Xie, Saining},
-  booktitle={European conference on computer vision},
-  year={2024}
-}
+### step2: Use script to process the view url
+```shell
+python googledataprocess.py --api-key YOUR_API_KEY --seed YOUR_DATA_SEED
 ```
 
+This command will create a `route.html`, `route_only_end.html` and some streetview images under the `googledata/seed{YOUR_DATA_SEED}/`.
 
+```
+└── googledata
+    ├── seed0
+        ├── url.txt
+        ├── pano.json
+        ├── route.html
+        ├── route_only_end.html
+        ├── streetview_{Agent}_{Time_index}_{Camera_label}.png
+    ├── seed1
+    ├── ...
+```
 
+The `route.html` will be like this after rendered by browser
+![route.png](docs\resources\route.png)
 
+The `route_only_end.html` will be like after rendered by browser
+![route_only_end.png](docs\resources\route_only_end.png)
