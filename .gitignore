@@ -13,7 +13,6 @@ venv/
 *.bin
 output
 version.py
-*.png
 */external_libs/*
 keys
 temp_files/*
