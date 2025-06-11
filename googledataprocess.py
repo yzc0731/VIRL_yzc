@@ -3,6 +3,10 @@ import json
 import os
 import requests
 import folium
+import polyline
+import time
+import tempfile
+import webbrowser
 from typing import List, Tuple, Dict
 from data_utils import calculate_bearing
 
@@ -224,22 +228,238 @@ class GoogleDataProcessor:
         os.makedirs(self.data_dir, exist_ok=True)
         self.json_path = os.path.join(self.data_dir, 'pano.json')
         self.txt_path = os.path.join(self.data_dir, 'url.txt')
+        
+    def generate_route(self, start_location, end_location, sample_count=10, mode="walking"):
+        """
+        Generate a route between two points and save to url.txt
+        
+        Args:
+            start_location: Start coordinates as "lat,lng" or [lat, lng]
+            end_location: End coordinates as "lat,lng" or [lat, lng]
+            sample_count: Number of sample points (default: 10)
+            mode: Travel mode - "walking", "driving", "bicycling", "transit" (default: "walking")
+        
+        Returns:
+            List of generated Street View URLs
+        """
+        if not self.api_key:
+            raise ValueError("API Key not set. Use set_api_key() method first.")
+            
+        # Format locations if they're lists or tuples
+        if isinstance(start_location, (list, tuple)):
+            start_location = f"{start_location[0]},{start_location[1]}"
+        if isinstance(end_location, (list, tuple)):
+            end_location = f"{end_location[0]},{end_location[1]}"
+            
+        print(f"Generating route from {start_location} to {end_location}...")
+            
+        # Call Directions API
+        url = "https://maps.googleapis.com/maps/api/directions/json"
+        params = {
+            "origin": start_location,
+            "destination": end_location,
+            "key": self.api_key,
+            "mode": mode
+        }
+        
+        response = requests.get(url, params=params)
+        data = response.json()
+        
+        if data["status"] != "OK":
+            raise Exception(f"Failed to get directions: {data['status']}")
+        
+        # Decode route polyline
+        route = data["routes"][0]
+        encoded_points = route["overview_polyline"]["points"]
+        coordinates = polyline.decode(encoded_points)
+        
+        # Sample route points evenly
+        sample_indices = [int(i * (len(coordinates) - 1) / (sample_count - 1)) for i in range(sample_count)]
+        sampled_coords = [coordinates[i] for i in sample_indices]
+        
+        # Get Street View URLs for each point
+        urls = []
+        for lat, lng in sampled_coords:
+            # Get panorama ID
+            metadata_url = f"https://maps.googleapis.com/maps/api/streetview/metadata?location={lat},{lng}&key={self.api_key}"
+            meta_response = requests.get(metadata_url)
+            meta_data = meta_response.json()
+            
+            if meta_data["status"] == "OK":
+                pano_id = meta_data["pano_id"]
+                street_view_url = f"https://www.google.com/maps/@{lat},{lng},3a,90y,0h,90t/data=!3m1!1e1!3m2!1s{pano_id}!2e0"
+                urls.append(street_view_url)
+                print(f"Found Street View at {lat}, {lng}")
+            else:
+                print(f"No Street View available at {lat}, {lng}")
+            
+            # Avoid rate limiting
+            time.sleep(0.2)
+        
+        # Save to url.txt
+        with open(self.txt_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(urls))
+        
+        print(f"Generated {len(urls)} Street View URLs and saved to {self.txt_path}")
+        return urls
+    
+    def generate_route_interactive(self):
+        """
+        Create an interactive map to select start and end points for route generation
+        
+        Returns:
+            List of generated Street View URLs
+        """
+        # Create a simple HTML file with a map
+        html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Route Generator</title>
+            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+            <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+            <style>
+                #map { height: 600px; }
+                .controls { padding: 10px; background: white; border: 1px solid #ccc; }
+            </style>
+        </head>
+        <body>
+            <div id="map"></div>
+            <div class="controls">
+                <h3>Route Generator</h3>
+                <p>Click to set start point, then click again to set end point.</p>
+                <div id="start">Start: Not set</div>
+                <div id="end">End: Not set</div>
+                <button id="clear">Clear</button>
+                <button id="generate" disabled>Generate Route</button>
+                <div id="output"></div>
+            </div>
+            <script>
+                var map = L.map('map').setView([40.7128, -74.0060], 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+                
+                var start = null;
+                var end = null;
+                var startMarker = null;
+                var endMarker = null;
+                
+                function updateUI() {
+                    document.getElementById('start').innerHTML = start ? 
+                        `Start: ${start.lat.toFixed(6)}, ${start.lng.toFixed(6)}` : 'Start: Not set';
+                    document.getElementById('end').innerHTML = end ? 
+                        `End: ${end.lat.toFixed(6)}, ${end.lng.toFixed(6)}` : 'End: Not set';
+                    
+                    document.getElementById('generate').disabled = !(start && end);
+                }
+                
+                map.on('click', function(e) {
+                    if (!start) {
+                        start = e.latlng;
+                        startMarker = L.marker(start).addTo(map)
+                            .bindPopup('Start').openPopup();
+                    } else if (!end) {
+                        end = e.latlng;
+                        endMarker = L.marker(end).addTo(map)
+                            .bindPopup('End').openPopup();
+                        L.polyline([start, end], {color: 'blue'}).addTo(map);
+                    }
+                    updateUI();
+                });
+                
+                document.getElementById('clear').addEventListener('click', function() {
+                    if (startMarker) map.removeLayer(startMarker);
+                    if (endMarker) map.removeLayer(endMarker);
+                    start = null;
+                    end = null;
+                    updateUI();
+                    map.eachLayer(function(layer) {
+                        if (layer instanceof L.Polyline) {
+                            map.removeLayer(layer);
+                        }
+                    });
+                });
+                
+                document.getElementById('generate').addEventListener('click', function() {
+                    var output = document.getElementById('output');
+                    output.innerHTML = 'Generating route...';
+                    
+                    // Save coordinates to a temporary file that will be read by Python
+                    var coordinates = JSON.stringify({
+                        start: [start.lat, start.lng],
+                        end: [end.lat, end.lng]
+                    });
+                    
+                    // Use navigator.clipboard API to copy to clipboard
+                    navigator.clipboard.writeText(coordinates).then(function() {
+                        output.innerHTML = 'Coordinates copied to clipboard! Paste into the Python terminal.';
+                    }).catch(function() {
+                        output.innerHTML = coordinates;
+                    });
+                });
+            </script>
+        </body>
+        </html>
+        """
+        
+        # Create temporary file
+        fd, path = tempfile.mkstemp(suffix='.html')
+        with os.fdopen(fd, 'w') as f:
+            f.write(html)
+        
+        # Open in browser
+        webbrowser.open('file://' + path)
+        
+        print("Map opened in your browser. After selecting points, the coordinates will be copied to clipboard.")
+        print("When ready, paste the coordinates here:")
+        
+        try:
+            coords_json = input()
+            import json
+            coords = json.loads(coords_json)
+            
+            start = coords['start']
+            end = coords['end']
+            
+            # Ask for sample count
+            sample_count = int(input("Enter number of sample points (default: 10): ") or "10")
+            
+            # Generate route
+            return self.generate_route(start, end, sample_count)
+            
+        except json.JSONDecodeError:
+            print("Invalid coordinates format. Please try again.")
+        except Exception as e:
+            print(f"Error: {str(e)}")
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(path)
+            except:
+                pass
+
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Google Street View 数据下载工具")
-    parser.add_argument(
-        "--api-key",
-        required=True,
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-    )
+    parser = argparse.ArgumentParser(description="Google Street View Data Download Tool")
+    parser.add_argument("--api-key", required=True, help="Google Maps API Key")
+    parser.add_argument("--seed", type=int, default=19, help="Random seed for data directory naming")
+    parser.add_argument("--mode", choices=["manual", "auto", "interactive"], default="manual",
+                        help="Mode: manual (use url.txt), auto (provide start/end), interactive (map selector)")
+    parser.add_argument("--start", help="Start location (lat,lng) for auto mode")
+    parser.add_argument("--end", help="End location (lat,lng) for auto mode") 
+    parser.add_argument("--samples", type=int, default=10, help="Number of sample points for auto mode")
     args = parser.parse_args()
 
     processor = GoogleDataProcessor(random_seed=args.seed)
-    processor.process_urls_to_json()
-    # processor.plot_route()
     processor.set_api_key(args.api_key)
+    
+    if args.mode == "auto":
+        if not args.start or not args.end:
+            parser.error("--start and --end are required with --mode=auto")
+        processor.generate_route(args.start, args.end, args.samples)
+    elif args.mode == "interactive":
+        processor.generate_route_interactive()
+    
+    # Continue with normal processing
+    processor.process_urls_to_json()
     processor.download_streetview_images()

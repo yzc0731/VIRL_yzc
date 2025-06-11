@@ -1,7 +1,10 @@
 # Multi-Robot Rendezvous
 ## Data Collection
 
-### step1: Collect google map street view url
+There are three ways to prepare Street View data:
+
+### Method 1: Manual Collection (Traditional)
+
 Before data processing, you should prepare a `url.txt` under the `googledata/seed{YOUR_DATA_SEED}/`.
 
 Here is an example: [url.txt](docs/resources/url.txt)
@@ -12,12 +15,47 @@ Then in the streetview mode, you can go through a route like an agent. Each step
 
 ![streetview_move_example.png](docs/resources/streetview_move_example.png)
 
-There is a `X` symbol on the ground to label where the next step is, do not move one step too far away. 
+There is a `X` symbol on the ground to label where the next step is, do not move one step too far away.
 
-### step2: Use script to process the view url
+### Method 2: Automatic Route Generation (Interactive Map)
+
+Use an interactive map interface to select start and end points:
+
+```shell
+python googledataprocess.py --api-key YOUR_API_KEY --seed YOUR_DATA_SEED --mode interactive
+```
+
+This will open a browser window where you can:
+1. Click on the map to set the start point
+2. Click again to set the end point
+3. Click the "Generate Route" button
+4. Copy the generated coordinates and paste them into the terminal
+5. Enter the number of sample points (default: 10)
+
+The system will automatically generate a route and download Street View images.
+
+### Method 3: Automatic Route Generation (Direct Coordinates)
+
+Provide start and end coordinates directly:
+
+```shell
+python googledataprocess.py --api-key YOUR_API_KEY --seed YOUR_DATA_SEED --mode auto --start "37.7749,-122.4194" --end "37.7833,-122.4167" --samples 15
+```
+
+Parameters:
+- `--start`: Starting coordinates in "latitude,longitude" format
+- `--end`: Ending coordinates in "latitude,longitude" format
+- `--samples`: Number of sampling points (default: 10)
+
+### Processing the Data
+
+Regardless of which method you used to prepare the data, the final processing step is the same:
+
 ```shell
 python googledataprocess.py --api-key YOUR_API_KEY --seed YOUR_DATA_SEED
 ```
+
+If you've already generated the `url.txt` through Method 2 or 3, you can use the default `--mode manual` option.
 
 This command will create a `route.html`, `route_only_end.html` and some streetview images under the `googledata/seed{YOUR_DATA_SEED}/`.
 
@@ -28,7 +66,7 @@ This command will create a `route.html`, `route_only_end.html` and some streetvi
         ├── pano.json
         ├── route.html
         ├── route_only_end.html
-        ├── streetview_{Agent}_{Time_index}_{Camera_label}.png
+        ├── streetview_{Agent}_{Time_index}_{Camera_label}.jpg
     ├── seed1
     ├── ...
 ```
