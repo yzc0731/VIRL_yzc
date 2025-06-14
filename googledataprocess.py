@@ -24,7 +24,7 @@ class GoogleDataProcessor:
         self.stride = 2
         self.street_view_url = "https://maps.googleapis.com/maps/api/streetview"
         self.cam_num = 5
-        self.label_list = ['0front', '1front_right', '2back_right', '3back_left', '4front_left']
+        self.label_list = ['front', 'front_right', 'back_right', 'back_left', 'front_left']
 
         # Create data directory based on random seed
         self.data_dir = f'./googledata/seed{self.random_seed}'

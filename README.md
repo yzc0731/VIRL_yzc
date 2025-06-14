@@ -74,5 +74,18 @@ This command will create a `route.html`, `route_only_end.html` and some streetvi
 The `route.html` will be like this after rendered by browser
 ![route.png](docs/resources/route.png)
 
-The `route_only_end.html` will be like after rendered by browser
+The `route_only_end.html` will be like this after rendered by browser
 ![route_only_end.png](docs/resources/route_only_end.png)
+
+### Label Image with Text
+```python
+python labeldata.py
+```
+The terminal will output a url like `http://127.0.0.1:5000` copy it and append a random seed number in the back like `http://127.0.0.1:5000/18`. It will access the images under `googledata/seed18`.
+All text you input in the website will stored in `googledata/seed18/answer_user.txt`.
+(If you want to change something in the website, you not only need to change the `labeldata.py`, but also `templates/index.html`. Because something are defined in it. )
+Then
+```python
+python txt2json.py
+```
+This can convert the `answer_user.txt` to `answer.json` like the format in `docs/resources/answer_example.json`
