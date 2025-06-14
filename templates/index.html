@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>图片标注工具 - Seed {{ random_seed }} - Time {{ current_time }}</title>
+    <title>Image Annotation - Seed {{ random_seed }} - Step {{ current_time }}</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -89,15 +89,15 @@
     </style>
 </head>
 <body>
-    <h1>图片标注工具 - Seed {{ random_seed }} - Time {{ current_time }}</h1>
-    
+    <h1>Image Annotation - Seed {{ random_seed }} - Step {{ current_time }}</h1>
+
     <div class="status">
-    当前处理: Time {{ current_time }} ({{ current_group_index + 1 }}/{{ total_groups }})
+    Current Processing: Step {{ current_time }} ({{ current_group_index + 1 }}/{{ total_groups }})
     </div>
-    
-    <!-- Alice的图片 -->
+
+    <!-- Alice's Images -->
     <div class="image-section">
-        <div class="agent-title">Alice的视角</div>
+        <div class="agent-title">Alice's Perspective</div>
         <div class="image-row">
             {% for image in alice_images %}
             <div class="image-box">
@@ -112,9 +112,9 @@
         </div>
     </div>
     
-    <!-- Bob的图片 -->
+    <!-- Bob's Images -->
     <div class="image-section">
-        <div class="agent-title">Bob的视角</div>
+        <div class="agent-title">Bob's Perspective</div>
         <div class="image-row">
             {% for image in bob_images %}
             <div class="image-box">
@@ -134,29 +134,29 @@
         
         <div class="form-section">
             <div class="form-group">
-                <label for="landmark">Landmark (地标):</label>
+                <label for="landmark">Landmark:</label>
                 <input type="text" id="landmark" name="landmark" required>
             </div>
             
             <div class="form-group">
-                <label for="alice_direction">Alice的方位描述:</label>
+                <label for="alice_direction">Alice's Direction Description:</label>
                 <textarea id="alice_direction" name="alice_direction" required></textarea>
             </div>
             
             <div class="form-group">
-                <label for="bob_direction">Bob的方位描述:</label>
+                <label for="bob_direction">Bob's Direction Description:</label>
                 <textarea id="bob_direction" name="bob_direction" required></textarea>
             </div>
             
             <div class="form-group">
-                <label for="conclusion">Conclusion (结论):</label>
+                <label for="conclusion">Conclusion:</label>
                 <textarea id="conclusion" name="conclusion" required></textarea>
             </div>
         </div>
         
         <div class="form-section">
             <div class="form-group">
-                <label for="alice_action">Alice的行动:</label>
+                <label for="alice_action">Alice's Action:</label>
                 <select id="alice_action" name="alice_action" required>
                     {% for action in action_choices %}
                     <option value="{{ action }}">{{ action }}</option>
@@ -165,7 +165,7 @@
             </div>
             
             <div class="form-group">
-                <label for="bob_action">Bob的行动:</label>
+                <label for="bob_action">Bob's Action:</label>
                 <select id="bob_action" name="bob_action" required>
                     {% for action in action_choices %}
                     <option value="{{ action }}">{{ action }}</option>
@@ -174,7 +174,7 @@
             </div>
         </div>
         
-        <button type="submit">提交并继续</button>
+        <button type="submit">Submit and Continue</button>
     </form>
 </body>
 </html>

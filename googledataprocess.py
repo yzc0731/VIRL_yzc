@@ -442,7 +442,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Google Street View Data Download Tool")
     parser.add_argument("--api-key", required=True, help="Google Maps API Key")
-    parser.add_argument("--seed", type=int, default=19, help="Random seed for data directory naming")
+    parser.add_argument("--seed", type=int, help="Random seed for data directory naming")
     parser.add_argument("--mode", choices=["manual", "auto", "interactive"], default="manual",
                         help="Mode: manual (use url.txt), auto (provide start/end), interactive (map selector)")
     parser.add_argument("--start", help="Start location (lat,lng) for auto mode")

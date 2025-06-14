@@ -1,9 +1,10 @@
 # Multi-Robot Rendezvous
 ## Data Collection
 
+### Step 1: Get the key locations along the route
 There are three ways to prepare Street View data:
 
-### Method 1: Manual Collection (Traditional)
+#### Method 1: Manual Collection (Traditional)
 
 Before data processing, you should prepare a `url.txt` under the `googledata/seed{YOUR_DATA_SEED}/`.
 
@@ -17,7 +18,7 @@ Then in the streetview mode, you can go through a route like an agent. Each step
 
 There is a `X` symbol on the ground to label where the next step is, do not move one step too far away.
 
-### Method 2: Automatic Route Generation (Interactive Map)
+#### Method 2: Automatic Route Generation (Interactive Map)
 
 Use an interactive map interface to select start and end points:
 
@@ -34,7 +35,7 @@ This will open a browser window where you can:
 
 The system will automatically generate a route and download Street View images.
 
-### Method 3: Automatic Route Generation (Direct Coordinates)
+#### Method 3: Automatic Route Generation (Direct Coordinates)
 
 Provide start and end coordinates directly:
 
@@ -47,7 +48,7 @@ Parameters:
 - `--end`: Ending coordinates in "latitude,longitude" format
 - `--samples`: Number of sampling points (default: 10)
 
-### Processing the Data
+### Step2: Processing the Data 
 
 Regardless of which method you used to prepare the data, the final processing step is the same:
 
@@ -77,15 +78,21 @@ The `route.html` will be like this after rendered by browser
 The `route_only_end.html` will be like this after rendered by browser
 ![route_only_end.png](docs/resources/route_only_end.png)
 
-### Label Image with Text
+### Step3: Label Image with Text
 ```python
 python labeldata.py
 ```
-The terminal will output a url like `http://127.0.0.1:5000` copy it and append a random seed number in the back like `http://127.0.0.1:5000/18`. It will access the images under `googledata/seed18`.
-All text you input in the website will stored in `googledata/seed18/answer_user.txt`.
-(If you want to change something in the website, you not only need to change the `labeldata.py`, but also `templates/index.html`. Because something are defined in it. )
+The terminal will output a url like `http://127.0.0.1:5000` copy it and append a seed number like `http://127.0.0.1:5000/18`. It will access the images under the folder `googledata/seed18`. The website will display the images like this. 
+
+![website.png](docs/resources/website.png)
+![website2.png](docs/resources/website2.png)
+
+All text you input in the website will stored in `googledata/seed18/answer_user.txt`. Click the button `Submit and Continue`, the website will refresh, and the images of the next step will display on it. 
+
+If you want to modify something in the website, you not only need to change the `labeldata.py`, but also `templates/index.html`. Because something are defined in it and need to be consistent with `labeldata.py`. 
+
 Then
 ```python
-python txt2json.py
+python txt2json.py --seed YOUR_DATA_SEED
 ```
-This can convert the `answer_user.txt` to `answer.json` like the format in `docs/resources/answer_example.json`
+This can convert the `googledata/seed{SEED}/answer_user.txt` to `googledata/seed{SEED}/answer.json` like the format in `docs/resources/answer_example.json`

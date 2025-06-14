@@ -6,25 +6,28 @@ from collections import defaultdict
 
 app = Flask(__name__)
 
-# 配置
 BASE_FOLDER = 'googledata'
 HEADING_ORDER = ['front', 'front_right', 'back_right', 'back_left', 'front_left']
 ACTION_CHOICES = ['forward', 'turn left', 'turn right', 'turn backward', 'stop']
+image_filename_pattern = re.compile(r'streetview_(Alice|Bob)_(\d+)_([\w_]+)\.jpg')
+'''
+e.g. streetview_Alice_0_front.jpg
+e.g. streetview_Bob_1_back_left.jpg'''
 
 def get_grouped_images(random_seed):
-    """获取分组后的图片数据，按time分组"""
+    """Obtain the grouped image data and group it by time"""
     seed_folder = f"seed{random_seed}"
     image_dir = os.path.join(BASE_FOLDER, seed_folder)
     image_files = glob(os.path.join(image_dir, 'streetview_*.jpg'))
-    
-    # 按time分组
+
+    # Group by time
     time_groups = defaultdict(list)
     for img_path in image_files:
         info = parse_image_info(img_path)
         if info:
             time_groups[info['time']].append(info)
-    
-    # 对每个time组进行排序和验证
+
+    # Sort and validate each time group
     processed_groups = []
     for time, images in time_groups.items():
         alice_images = [img for img in images if img['agent'] == 'Alice']
@@ -39,6 +42,8 @@ def get_grouped_images(random_seed):
                 'alice': alice_sorted,
                 'bob': bob_sorted
             })
+        else:
+            print(f"Warning: Time {time} has invalid image counts (Alice: {len(alice_sorted)}, Bob: {len(bob_sorted)})")
     
     return processed_groups
 
@@ -47,9 +52,10 @@ def sort_by_heading(images):
     return sorted(images, key=lambda x: heading_order.get(x['heading'], 999))
 
 def parse_image_info(full_path):
+    """Parse the image filename to extract agent, time, and heading"""
     rel_path = os.path.relpath(full_path, BASE_FOLDER)
     basename = os.path.basename(full_path)
-    match = re.match(r'streetview_(Alice|Bob)_(\d+)_([\w_]+)\.jpg', basename)
+    match = re.match(image_filename_pattern, basename)
     if match:
         return {
             'agent': match.group(1),
@@ -60,21 +66,22 @@ def parse_image_info(full_path):
         }
     return None
 
-@app.route('/googledata/<path:filename>')
+@app.route(f'/{BASE_FOLDER}/<path:filename>')
 def custom_static(filename):
+    """Serve static files from the googledata folder"""
     return send_from_directory(BASE_FOLDER, filename)
 
 @app.route('/<int:random_seed>', methods=['GET', 'POST'])
 def index(random_seed):
     image_groups = get_grouped_images(random_seed)
     if not image_groups:
-        return f"在seed{random_seed}文件夹中没有找到有效的图片组！"
+        return f"No valid image group found in the {BASE_FOLDER}/seed{random_seed}"
 
-    # 获取当前处理的组索引（从URL参数或默认为0）
+    # Obtain the index of the currently processed group (either from the URL parameter or defaulted to 0)
     current_group_index = int(request.args.get('group', 0))
     
     if request.method == 'POST':
-        # 保存用户输入
+        # Save user input
         data = {
             'time': request.form['time'],
             'landmark': request.form['landmark'],
@@ -95,15 +102,15 @@ def index(random_seed):
             f.write(f"{data['conclusion']}|")
             f.write(f"Alice_action:{data['alice_action']}|")
             f.write(f"Bob_action:{data['bob_action']}\n")
-        # 处理完当前组后，检查是否还有更多组
+        # After processing the current group, check if there are any more groups
         if current_group_index + 1 < len(image_groups):
             return redirect(url_for('index', 
                                 random_seed=random_seed,
                                 group=current_group_index + 1))
         else:
-            return "所有图片组已完成标注！"
+            return "All image groups have been annotated!"
     
-    # 确保索引在有效范围内
+    # Ensure the index is within a valid range
     current_group_index = min(current_group_index, len(image_groups) - 1)
     current_group = image_groups[current_group_index]
     

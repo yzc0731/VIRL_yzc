@@ -2,11 +2,8 @@ import json
 import re
 
 def parse_line(line):
-    """解析单行数据并返回字典"""
-    # 初始化结果字典
+    """Parse a single line of data and return a dictionary"""
     result = {}
-    
-    # 使用正则表达式匹配各个部分
     pattern = re.compile(
         r"(?P<id>\d+)\|"
         r"(?P<detection>[^|]+)\|"
@@ -20,8 +17,7 @@ def parse_line(line):
     match = pattern.match(line)
     if not match:
         raise ValueError(f"Line format doesn't match expected pattern: {line}")
-    
-    # 构建字典结构
+
     experiment_id = match.group('id')
     result[experiment_id] = {
         "Thought": {
@@ -41,22 +37,25 @@ def parse_line(line):
     return result
 
 def txt_to_json(input_file, output_file):
-    """将整个txt文件转换为json"""
+    """Convert the entire txt file to json"""
     final_result = {}
     
     with open(input_file, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
-            if line:  # 忽略空行
+            if line:
                 line_data = parse_line(line)
                 final_result.update(line_data)
     
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(final_result, f, indent=4, ensure_ascii=False)
 
-# 使用示例
 if __name__ == "__main__":
-    input_file = "googledata/seed18/answer_user.txt"  # 你的输入txt文件
-    output_file = "googledata/seed18/answer.json"  # 输出的json文件
+    import argparse
+    parser = argparse.ArgumentParser(description="Google Street View Data Download Tool")
+    parser.add_argument("--seed", type=int, help="Random seed for data directory naming")
+    args = parser.parse_args()
+    input_file = f"googledata/seed{args.seed}/answer_user.txt"
+    output_file = f"googledata/seed{args.seed}/answer.json"
     txt_to_json(input_file, output_file)
-    print(f"转换完成，结果已保存到 {output_file}")
+    print(f"Saved to {output_file}")
