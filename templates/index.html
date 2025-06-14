@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>图片标注工具 - Seed {{ random_seed }} - Time {{ current_time }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .status {
+            text-align: center;
+            margin: 20px 0;
+            font-size: 16px;
+            color: #666;
+        }
+        .image-section {
+            margin-bottom: 30px;
+        }
+        .agent-title {
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 10px;
+            padding: 5px;
+            background-color: #f0f0f0;
+        }
+        .image-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .image-box {
+            width: 18%;
+            text-align: center;
+        }
+        .image-box img {
+            max-width: 100%;
+            max-height: 150px;
+            display: block;
+            margin: 0 auto 5px;
+        }
+        .image-info {
+            font-size: 12px;
+            color: #666;
+        }
+        .form-section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        textarea {
+            height: 80px;
+        }
+        button {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>图片标注工具 - Seed {{ random_seed }} - Time {{ current_time }}</h1>
+    
+    <div class="status">
+    当前处理: Time {{ current_time }} ({{ current_group_index + 1 }}/{{ total_groups }})
+    </div>
+    
+    <!-- Alice的图片 -->
+    <div class="image-section">
+        <div class="agent-title">Alice的视角</div>
+        <div class="image-row">
+            {% for image in alice_images %}
+            <div class="image-box">
+                <img src="{{ url_for('custom_static', filename=image.filename) }}" 
+                     alt="{{ image.filename }}"
+                     onerror="this.onerror=null;this.src=''">
+                <div class="image-info">
+                    {{ image.heading }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <!-- Bob的图片 -->
+    <div class="image-section">
+        <div class="agent-title">Bob的视角</div>
+        <div class="image-row">
+            {% for image in bob_images %}
+            <div class="image-box">
+                <img src="{{ url_for('custom_static', filename=image.filename) }}" 
+                     alt="{{ image.filename }}"
+                     onerror="this.onerror=null;this.src=''">
+                <div class="image-info">
+                    {{ image.heading }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <form method="POST">
+        <input type="hidden" name="time" value="{{ current_time }}">
+        
+        <div class="form-section">
+            <div class="form-group">
+                <label for="landmark">Landmark (地标):</label>
+                <input type="text" id="landmark" name="landmark" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="alice_direction">Alice的方位描述:</label>
+                <textarea id="alice_direction" name="alice_direction" required></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="bob_direction">Bob的方位描述:</label>
+                <textarea id="bob_direction" name="bob_direction" required></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="conclusion">Conclusion (结论):</label>
+                <textarea id="conclusion" name="conclusion" required></textarea>
+            </div>
+        </div>
+        
+        <div class="form-section">
+            <div class="form-group">
+                <label for="alice_action">Alice的行动:</label>
+                <select id="alice_action" name="alice_action" required>
+                    {% for action in action_choices %}
+                    <option value="{{ action }}">{{ action }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="bob_action">Bob的行动:</label>
+                <select id="bob_action" name="bob_action" required>
+                    {% for action in action_choices %}
+                    <option value="{{ action }}">{{ action }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        
+        <button type="submit">提交并继续</button>
+    </form>
+</body>
+</html>

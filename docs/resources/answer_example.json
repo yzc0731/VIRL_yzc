@@ -1,0 +1,14 @@
+{
+    "Thought": {
+        "Detection": "{A Common Landmark}",
+        "Orientation": {
+            "Alice": "The {A Common Landmark} is {Some Direction} of Alice.",
+            "Bob": "The {A Common Landmark} is {Some Direction} of Bob."
+        },
+        "Conclusion": "{Detail Descriptions of your spatial relationship and future plan, maybe you can predict the future of the example}. "
+    },
+    "Answer": {
+        "Alice": "{Action}",
+        "Bob": "{Action}"
+    }
+}
