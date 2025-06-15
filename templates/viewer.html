@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Image Annotation - Seed {{ seed }}</title>
+    <title>Answer Viewer - Seed {{ seed }}</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -48,33 +48,38 @@
             font-size: 12px;
             color: #666;
         }
-        .form-section {
+        .answer-section {
             margin: 30px 0;
             padding: 20px;
             border: 1px solid #ddd;
             border-radius: 5px;
+            background-color: #f9f9f9;
         }
-        .form-group {
+        .answer-group {
             margin-bottom: 15px;
         }
-        label {
-            display: block;
-            margin-bottom: 5px;
+        .answer-title {
             font-weight: bold;
+            margin-bottom: 5px;
         }
-        input[type="text"], textarea, select {
+        .readonly-field {
             width: 100%;
             padding: 8px;
             box-sizing: border-box;
             border: 1px solid #ddd;
             border-radius: 4px;
+            background-color: #fff;
+            pointer-events: none;
         }
-        textarea {
+        textarea.readonly-field {
             height: 80px;
         }
-        button {
-            display: block;
-            margin: 20px auto;
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        .nav-button {
             padding: 10px 20px;
             background-color: #4CAF50;
             color: white;
@@ -82,17 +87,22 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 16px;
+            text-decoration: none;
         }
-        button:hover {
+        .nav-button:hover {
             background-color: #45a049;
+        }
+        .nav-button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
         }
     </style>
 </head>
 <body>
-    <h1>Image Annotation - Seed {{ seed }}</h1>
-
+    <h1>Answer Viewer - Seed {{ seed }}</h1>
+    
     <div class="status">
-    Current Processing: {{ current_group_index + 1 }}/{{ total_groups }}
+        Current: Group {{ current_group_index + 1 }} / Total {{ total_groups }} Groups
     </div>
 
     <!-- Alice's Images -->
@@ -111,7 +121,7 @@
             {% endfor %}
         </div>
     </div>
-    
+
     <!-- Bob's Images -->
     <div class="image-section">
         <div class="agent-title">Bob's Perspective</div>
@@ -128,53 +138,54 @@
             {% endfor %}
         </div>
     </div>
+
+    <!-- Answers Display -->
+    <div class="answer-section">
+        <div class="answer-group">
+            <div class="answer-title">Detection:</div>
+            <input type="text" class="readonly-field" 
+                   value="{{ answers['Thought']['Detection'] }}" readonly>
+        </div>
+        
+        <div class="answer-group">
+            <div class="answer-title">Alice's Orientation Description:</div>
+            <textarea class="readonly-field" readonly>{{ answers['Thought']['Orientation']['Alice'] }}</textarea>
+        </div>
+        
+        <div class="answer-group">
+            <div class="answer-title">Bob's Orientation Description:</div>
+            <textarea class="readonly-field" readonly>{{ answers['Thought']['Orientation']['Bob'] }}</textarea>
+        </div>
+        
+        <div class="answer-group">
+            <div class="answer-title">Conclusion:</div>
+            <textarea class="readonly-field" readonly>{{ answers['Thought']['Conclusion'] }}</textarea>
+        </div>
+        
+        <div class="answer-group">
+            <div class="answer-title">Alice's Action:</div>
+            <input type="text" class="readonly-field" 
+                   value="{{ answers['Answer']['Alice'] }}" readonly>
+        </div>
+        
+        <div class="answer-group">
+            <div class="answer-title">Bob's Action:</div>
+            <input type="text" class="readonly-field" 
+                   value="{{ answers['Answer']['Bob'] }}" readonly>
+        </div>
+    </div>
     
-    <form method="POST">
-        <input type="hidden" name="time" value="{{ current_time }}">
-        
-        <div class="form-section">
-            <div class="form-group">
-                <label for="landmark">Landmark:</label>
-                <input type="text" id="landmark" name="landmark" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="alice_direction">Alice's Direction Description:</label>
-                <textarea id="alice_direction" name="alice_direction" required></textarea>
-            </div>
-            
-            <div class="form-group">
-                <label for="bob_direction">Bob's Direction Description:</label>
-                <textarea id="bob_direction" name="bob_direction" required></textarea>
-            </div>
-            
-            <div class="form-group">
-                <label for="conclusion">Conclusion:</label>
-                <textarea id="conclusion" name="conclusion" required></textarea>
-            </div>
-        </div>
-        
-        <div class="form-section">
-            <div class="form-group">
-                <label for="alice_action">Alice's Action:</label>
-                <select id="alice_action" name="alice_action" required>
-                    {% for action in action_choices %}
-                    <option value="{{ action }}">{{ action }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="bob_action">Bob's Action:</label>
-                <select id="bob_action" name="bob_action" required>
-                    {% for action in action_choices %}
-                    <option value="{{ action }}">{{ action }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-        </div>
-        
-        <button type="submit">Submit and Continue</button>
-    </form>
+    <div class="navigation">
+        {% if prev_group_url %}
+            <a href="{{ prev_group_url }}" class="nav-button">Previous</a>
+        {% else %}
+            <span class="nav-button" disabled>Previous</span>
+        {% endif %}
+        {% if next_group_url %}
+            <a href="{{ next_group_url }}" class="nav-button">Next</a>
+        {% else %}
+            <span class="nav-button" disabled>Next</span>
+        {% endif %}
+    </div>
 </body>
 </html>

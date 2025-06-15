@@ -78,21 +78,21 @@ The `route.html` will be like this after rendered by browser
 The `route_only_end.html` will be like this after rendered by browser
 ![route_only_end.png](docs/resources/route_only_end.png)
 
-### Step3: Label Image with Text
+### Step3: Label Image with Text by website interface
 ```python
-python labeldata.py
+python googledataannotator.py --mode web
 ```
-The terminal will output a url like `http://127.0.0.1:5000` copy it and append a seed number like `http://127.0.0.1:5000/18`. It will access the images under the folder `googledata/seed18`. The website will display the images like this. 
+The terminal will output a url like `http://127.0.0.1:5000` copy it and append a seed number and a mode string like `http://127.0.0.1:5000/18/label`. It will access the images under the folder `googledata/seed18`. `label` means you can give the images with text answer label. The website will display the images like the following:
 
 ![website.png](docs/resources/website.png)
 ![website2.png](docs/resources/website2.png)
 
 All text you input in the website will stored in `googledata/seed18/answer_user.txt`. Click the button `Submit and Continue`, the website will refresh, and the images of the next step will display on it. 
 
-If you want to modify something in the website, you not only need to change the `labeldata.py`, but also `templates/index.html`. Because something are defined in it and need to be consistent with `labeldata.py`. 
+If you want to modify something in the website, you not only need to change the `googledataannotator.py`, but also `templates/index.html`. Because something are defined in it and need to be consistent with `googledataannotator.py`. 
 
-Then
-```python
-python txt2json.py --seed YOUR_DATA_SEED
-```
-This can convert the `googledata/seed{SEED}/answer_user.txt` to `googledata/seed{SEED}/answer.json` like the format in `docs/resources/answer_example.json`
+Then, enter the url `http://127.0.0.1:5000/18/convert` in your browser. This can convert the `googledata/seed{SEED}/answer_user.txt` to `googledata/seed{SEED}/answer.json` like the format in `docs/resources/answer_example.json`.
+
+If you want to check the answer, `http://127.0.0.1:5000/18/view` in your browser. The website will display the images and answers like the following:
+
+![view_web.png](docs/resources/view_web.png)
