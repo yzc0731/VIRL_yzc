@@ -23,8 +23,8 @@ class GoogleDataProcessor:
         self.pano_pattern = re.compile(r'!1s(.*?)!2e')
         self.stride = 2
         self.street_view_url = "https://maps.googleapis.com/maps/api/streetview"
-        self.cam_num = 5
-        self.label_list = ['front', 'front_right', 'back_right', 'back_left', 'front_left']
+        self.cam_num = 4
+        self.label_list = ['front', 'right', 'back', 'left']
 
         # Create data directory based on random seed
         self.data_dir = f'./googledata/seed{self.random_seed}'
@@ -108,11 +108,48 @@ class GoogleDataProcessor:
             Bob_points_list.extend(points_list[(total_len//2 + 1):][::-1][::self.stride])
             end_point = points_list[total_len//2]
 
-        # plot route only end
+        # plot route only end points
         only_end_points_list = [Alice_points_list[0], end_point, Bob_points_list[0]]
         self.plot_route(coordinates=only_end_points_list, output_file='route_only_end.html')
         
         return Alice_points_list, Bob_points_list, end_point
+    
+    def add_fore_heading_to_points(self, Alice_points_list: List[Tuple[float, float]],
+                                  Bob_points_list: List[Tuple[float, float]],
+                                    end_point: Tuple[float, float]) -> Dict[str, List[Tuple[float, float, float]]]:
+        """
+        Add fore_heading to each point tuple in Alice and Bob's route points
+        Args:
+            Alice_points_list: List of Alice's route points (lat, lng)
+            Bob_points_list: List of Bob's route points (lat, lng)
+            end_point: End point (lat, lng)
+        Returns:
+            Dictionary with keys 'Alice' and 'Bob', each containing a list of tuples (lat, lng, fore_heading)
+        """
+        points_dict = {'Alice': [], 'Bob': []}
+        alice_last_fore_heading = None
+        for loc in Alice_points_list:
+            latitude, longitude = loc
+            fore_heading = calculate_bearing(latitude, longitude, end_point[0], end_point[1])
+            alice_last_fore_heading = fore_heading
+            points_dict['Alice'].append((latitude, longitude, fore_heading))
+        
+        # append end point with last fore_heading to Alice's list
+        if alice_last_fore_heading is not None:
+            points_dict['Alice'].append((end_point[0], end_point[1], alice_last_fore_heading))
+
+        bob_last_fore_heading = None
+        for loc in Bob_points_list:
+            latitude, longitude = loc
+            fore_heading = calculate_bearing(latitude, longitude, end_point[0], end_point[1])
+            bob_last_fore_heading = fore_heading
+            points_dict['Bob'].append((latitude, longitude, fore_heading))
+
+        # append end point with last fore_heading to Bob's list
+        if bob_last_fore_heading is not None:
+            points_dict['Bob'].append((end_point[0], end_point[1], bob_last_fore_heading))
+
+        return points_dict
 
     def download_streetview_images(self):
         """Download Google Street View images"""
@@ -120,15 +157,11 @@ class GoogleDataProcessor:
             raise ValueError("API Key not set")
 
         Alice_points_list, Bob_points_list, end_point = self.parse_pano_json()
-        points_dict = {
-            'Alice': Alice_points_list,
-            'Bob': Bob_points_list
-        }
+        points_dict = self.add_fore_heading_to_points(Alice_points_list, Bob_points_list, end_point)
         
         for key, value in points_dict.items():
-            for index, loc in enumerate(value):
-                latitude, longitude = loc
-                fore_heading = calculate_bearing(latitude, longitude, end_point[0], end_point[1])
+            for index, point in enumerate(value):
+                latitude, longitude, fore_heading = point
                 heading_list = [(fore_heading + i * (360 / self.cam_num)) % 360 for i in range(self.cam_num)]
                 
                 for heading, label in zip(heading_list, self.label_list):
@@ -459,6 +492,7 @@ if __name__ == "__main__":
         processor.generate_route(args.start, args.end, args.samples)
     elif args.mode == "interactive":
         processor.generate_route_interactive()
+    # elif args.mode == "manual": do nothing, just read from url.txt
     
     # Continue with normal processing
     processor.process_urls_to_json()

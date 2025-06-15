@@ -7,7 +7,7 @@
             font-family: Arial, sans-serif;
             max-width: 1200px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 0px;
         }
         h1 {
             text-align: center;
@@ -15,34 +15,39 @@
         }
         .status {
             text-align: center;
-            margin: 20px 0;
+            margin: 0px 0;
             font-size: 16px;
             color: #666;
         }
         .image-section {
-            margin-bottom: 30px;
+            margin-bottom: 0px;
         }
         .agent-title {
             font-weight: bold;
-            font-size: 18px;
-            margin-bottom: 10px;
-            padding: 5px;
+            font-size: 16px;
+            margin-bottom: 0px;
+            padding: 0px;
             background-color: #f0f0f0;
         }
         .image-row {
             display: flex;
-            justify-content: space-between;
-            margin-bottom: 20px;
+            justify-content: space-around;
+            margin-bottom: 0px;
         }
         .image-box {
-            width: 18%;
+            max-width: 640px;
+            width: 100%;
             text-align: center;
+            margin: 0px auto;
         }
+
         .image-box img {
-            max-width: 100%;
-            max-height: 150px;
+            width: 100%;
+            height: auto;
+            max-width: 640px;
+            max-height: 640px;
             display: block;
-            margin: 0 auto 5px;
+            margin: 0 auto 0px;
         }
         .image-info {
             font-size: 12px;
@@ -64,6 +69,8 @@
         }
         input[type="text"], textarea, select {
             width: 100%;
+            font-family: Arial, sans-serif; /* 确保字体一致 */
+            font-size: 16px; /* 统一字体大小 */
             padding: 8px;
             box-sizing: border-box;
             border: 1px solid #ddd;
@@ -140,12 +147,12 @@
             
             <div class="form-group">
                 <label for="alice_direction">Alice's Direction Description:</label>
-                <textarea id="alice_direction" name="alice_direction" required></textarea>
+                <input type="text" id="alice_direction" name="alice_direction" required>
             </div>
             
             <div class="form-group">
                 <label for="bob_direction">Bob's Direction Description:</label>
-                <textarea id="bob_direction" name="bob_direction" required></textarea>
+                <input type="text" id="bob_direction" name="bob_direction" required>
             </div>
             
             <div class="form-group">

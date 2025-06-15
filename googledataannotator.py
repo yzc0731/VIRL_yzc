@@ -15,11 +15,12 @@ class GoogleDataAnnotator:
     def __init__(self, base_folder, seed):
         self.base_folder = base_folder
         self.seed = seed
+        self.camera_num = 4
         self.folder = os.path.join(base_folder, f'seed{seed}')
         if not os.path.exists(self.folder):
             raise FileNotFoundError(f"Seed folder {self.folder} does not exist.")
         self.image_filename_pattern = re.compile(r'streetview_(Alice|Bob)_(\d+)_([\w_]+)\.jpg')
-        self.heading_order = ['front', 'front_right', 'back_right', 'back_left', 'front_left']
+        self.heading_order = ['front', 'right', 'back', 'left']
 
     def sort_by_heading(self, images):
         heading_order = {h: i for i, h in enumerate(self.heading_order)}
@@ -73,7 +74,7 @@ class GoogleDataAnnotator:
             alice_sorted = self.sort_by_heading(alice_images)
             bob_sorted = self.sort_by_heading(bob_images)
             
-            if len(alice_sorted) == 5 and len(bob_sorted) == 5:
+            if len(alice_sorted) == self.camera_num and len(bob_sorted) == self.camera_num:
                 processed_groups.append({
                     'time': time,
                     'alice': alice_sorted,
@@ -97,8 +98,8 @@ class GoogleDataAnnotator:
             
             alice_sorted = self.sort_by_heading(alice_images)
             bob_sorted = self.sort_by_heading(bob_images)
-            
-            if len(alice_sorted) == 5 and len(bob_sorted) == 5:
+
+            if len(alice_sorted) == self.camera_num and len(bob_sorted) == self.camera_num:
                 time_str = str(time)
                 group_answers = answers.get(time_str, {
                     "Thought": {
