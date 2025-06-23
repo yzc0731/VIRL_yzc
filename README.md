@@ -96,3 +96,29 @@ Then
 python txt2json.py --seed YOUR_DATA_SEED
 ```
 This can convert the `googledata/seed{SEED}/answer_user.txt` to `googledata/seed{SEED}/answer.json` like the format in `docs/resources/answer_example.json`
+
+### Step 4: Annotate Bounding Boxes
+
+To annotate objects in Street View images with bounding boxes:
+
+```shell
+python bbox_annotator.py --data-dir googledata --seed YOUR_DATA_SEED
+```
+
+The bounding box annotator provides a user-friendly interface for annotating important objects in Street View images. Here's how to use it:
+
+1. After launching the tool, select a timestep from the dropdown menu and click "Load Images"
+2. Thumbnails of all available images for that timestep will appear on the right side
+3. Click on any thumbnail to load the full image for annotation
+4. To add a bounding box:
+    - Click and drag on the image to create a box around an object
+    - Enter a description for the annotated object when prompted
+5. To manage annotations:
+    - Click "Preview Boxes" to see all annotations for the current image
+    - Use "Highlight Selected Box" to view a specific annotation
+    - Use "Clear Annotations" to remove all boxes from the current image
+6. Click "Save Annotations" to store your work
+
+Annotations are saved in JSON format at `googledata/seed{YOUR_DATA_SEED}/bbox/annotations_{SEED}.json` with normalized coordinates (0-1 range) for portability.
+
+The tool automatically tracks which images have been annotated (marked with a green ✓), making it easy to track your progress across multiple sessions.
