@@ -23,7 +23,7 @@ class GoogleDataProcessor:
         self.pano_pattern = re.compile(r'!1s(.*?)!2e')
         self.street_view_url = "https://maps.googleapis.com/maps/api/streetview"
         self.cam_num = 4
-        self.label_list = ['front', 'right', 'back', 'left']
+        self.view_label_list = ['front', 'right', 'back', 'left']
 
         # Create data directory based on place id
         self.data_dir = f'./googledata/place{self.seed}'
@@ -72,7 +72,7 @@ class GoogleDataProcessor:
 
         return {'nodes': nodes}
 
-    def process_urls_to_json(self):
+    def process_urls_to_json(self) -> None:
         """Process URLs from the text file and save to JSON"""
         # read urls from the text file
         with open(self.url_path, 'r', encoding='utf-8') as f:
@@ -148,7 +148,7 @@ class GoogleDataProcessor:
         
         return points_dict
 
-    def download_streetview_images(self):
+    def download_streetview_images(self) -> None:
         """Download Google Street View images"""
         points_list = self.parse_pano_json_to_list()
         points_dict = self.add_fore_heading_to_points(points_list)
@@ -157,7 +157,7 @@ class GoogleDataProcessor:
             latitude, longitude, fore_heading = value
             heading_list = [(fore_heading + i * (360 / self.cam_num)) % 360 for i in range(self.cam_num)]
                 
-            for heading, label in zip(heading_list, self.label_list):
+            for heading, label in zip(heading_list, self.view_label_list):
                 filename = f"id_{key}_{label}.jpg"
                 if os.path.exists(os.path.join(self.data_dir, filename)):
                     print(f"File {filename} already exists, skipping download.")
@@ -182,7 +182,7 @@ class GoogleDataProcessor:
                 else:
                     print(f"Error state: {response.status_code}. Error msg: {response.text}")
     
-    def plot_points(self, nodes: Dict[str, Dict[str, float]], zoom_start: int = 20):
+    def plot_points(self, nodes: Dict[str, Dict[str, float]], zoom_start: int = 20) -> None:
         """
         Plot points on a map using Folium and save to HTML file
         
@@ -217,7 +217,7 @@ class GoogleDataProcessor:
     def plot_route(self, renderzvous_point: Tuple[str, Tuple[float, float]],
                    alice_points_list: List[Tuple[str, Tuple[float, float]]],
                    bob_points_list: List[Tuple[str, Tuple[float, float]]], 
-                   traj_id: int, zoom_start: int = 20):
+                   traj_id: int, zoom_start: int = 20) -> None:
         """
         Plot route on a map using Folium and save to HTML file
         
@@ -321,7 +321,7 @@ class GoogleDataProcessor:
 
     def write_traj_metainfo(self, traj_id: int = -1, 
                             stride: int = 1, 
-                            renderzvous_point_pano_id: str = None):
+                            renderzvous_point_pano_id: str = None) -> None:
         """ Write traj information to a text file
 
         Args:
@@ -401,11 +401,11 @@ class GoogleDataProcessor:
                     stride=stride,
                 )
 
-    def set_api_key(self, api_key: str):
+    def set_api_key(self, api_key: str) -> None:
         """Set Google Maps API key"""
         self.api_key = api_key
 
-    def set_seed(self, seed: int):
+    def set_seed(self, seed: int) -> None:
         """Set random seed and update related paths"""
         self.seed = seed
         self.data_dir = f'./googledata/seed{self.seed}'
@@ -626,7 +626,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Google Street View Data Download Tool")
     parser.add_argument("--api-key", required=True, help="Google Maps API Key")
-    parser.add_argument("--seed", type=int, help="Random seed for data directory naming")
+    parser.add_argument("--seed", type=int, help="Data ID")
 
     parser.add_argument("--mode", choices=["manual", "auto", "interactive"], default="manual",
                         help="Mode: manual (use url.txt), auto (provide start/end), interactive (map selector)")

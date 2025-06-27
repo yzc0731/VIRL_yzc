@@ -86,6 +86,54 @@ The `points.html` will display the positions of each point. When you click the d
 python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --function download
 ```
 
+### Step 3: Annotate Bounding Boxes
+
+To annotate objects in Street View images with bounding boxes:
+
+```shell
+python bbox_annotator.py --seed PLACE_ID
+```
+
+The bounding box annotator provides a user-friendly interface for annotating important objects in Street View images. Here's how to use it:
+
+1. After launching the tool, select a timestep from the dropdown menu and click "Load Images"
+2. Thumbnails of all available images for that timestep will appear on the right side
+3. Click on any thumbnail to load the full image for annotation
+4. To add a bounding box:
+    - Click and drag on the image to create a box around an object
+    - Enter a description for the annotated object when prompted
+5. To manage annotations:
+    - Click "Preview Boxes" to see all annotations for the current image
+    - Use "Highlight Selected Box" to view a specific annotation
+    - Use "Clear Annotations" to remove all boxes from the current image
+6. Click "Save Annotations" to store your work
+
+Annotations are saved in JSON format at `googledata/place{YOUR_DATA_SEED}/annotations.json` with normalized coordinates (0-1 range) for portability. The json file look like this:
+```json
+{
+  "zLqVt8pA8zM-5vC1WWIW8w_left": [
+    {
+      "x1": 0.2921875,
+      "y1": 0.4015625,
+      "x2": 0.83125,
+      "y2": 0.94375,
+      "description": "22222222"
+    }
+  ],
+  "7qDwoMXYQoG2h9mo7120ww_right": [
+    {
+      "x1": 0.0171875,
+      "y1": 0.178125,
+      "x2": 0.7859375,
+      "y2": 0.8703125,
+      "description": "33333"
+    }
+  ]
+}
+```
+
+The tool automatically tracks which images have been annotated (marked with a green ✓), making it easy to track your progress across multiple sessions.
+
 After this, the structure of the directory will be like the following:
 ```
 └── googledata
@@ -94,12 +142,13 @@ After this, the structure of the directory will be like the following:
         ├── pano.json
         ├── points.html
         ├── id_{panoid}_{Camera_label}.jpg
+        ├── annotations.json
     ├── place1
         ├── ...
     ├── ...
 ```
 
-### Step3: Sample a Trajectory from a Place
+### Step4: Sample a Trajectory from a Place
 
 ```
 python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --function write --traj-id TRAJ_ID --stride STRIDE --renderzvous_point_pano_id ID
@@ -132,7 +181,7 @@ The `route.html` will be like this after rendered by browser
 
 ![route.png](docs/resources/route.png)
 
-### Step4. Label Image with Text
+### Step5. Label Image with Text (TODO)
 
 ```json
 └── textdata
@@ -162,29 +211,3 @@ Then
 python txt2json.py --seed YOUR_DATA_SEED
 ```
 This can convert the `googledata/seed{SEED}/answer_user.txt` to `googledata/seed{SEED}/answer.json` like the format in `docs/resources/answer_example.json`
-
-### Step 4: Annotate Bounding Boxes
-
-To annotate objects in Street View images with bounding boxes:
-
-```shell
-python bbox_annotator.py --data-dir googledata --seed PLACE_ID
-```
-
-The bounding box annotator provides a user-friendly interface for annotating important objects in Street View images. Here's how to use it:
-
-1. After launching the tool, select a timestep from the dropdown menu and click "Load Images"
-2. Thumbnails of all available images for that timestep will appear on the right side
-3. Click on any thumbnail to load the full image for annotation
-4. To add a bounding box:
-    - Click and drag on the image to create a box around an object
-    - Enter a description for the annotated object when prompted
-5. To manage annotations:
-    - Click "Preview Boxes" to see all annotations for the current image
-    - Use "Highlight Selected Box" to view a specific annotation
-    - Use "Clear Annotations" to remove all boxes from the current image
-6. Click "Save Annotations" to store your work
-
-Annotations are saved in JSON format at `googledata/seed{YOUR_DATA_SEED}/bbox/annotations_{SEED}.json` with normalized coordinates (0-1 range) for portability.
-
-The tool automatically tracks which images have been annotated (marked with a green ✓), making it easy to track your progress across multiple sessions.
