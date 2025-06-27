@@ -6,24 +6,26 @@ There are three ways to prepare Street View data:
 
 #### Method 1: Manual Collection (Traditional)
 
-Before data processing, you should prepare a `url.txt` under the `googledata/seed{YOUR_DATA_SEED}/`.
+Before data processing, you should prepare a `url.txt` under the `googledata/place{PLACE_ID}/`.
 
 Here is an example: [url.txt](docs/resources/url.txt)
 
-You can enter arbitrary position street view by google map like ![streetview_example.png](docs/resources/streetview_example.png)
+You can enter arbitrary position street view by google map like 
 
-Then in the streetview mode, you can go through a route like an agent. Each step you move, copy the url into `url.txt` in order. 
+![streetview_example.png](docs/resources/streetview_example.png)
+
+Then in the streetview mode, you can imagine yourself as an agent, exploring within Google Maps. Each step you move, copy the url into `url.txt` in order. 
 
 ![streetview_move_example.png](docs/resources/streetview_move_example.png)
 
-There is a `X` symbol on the ground to label where the next step is, do not move one step too far away.
+There is a `X` symbol on the ground to label where the next step is, do not move one step too far away. And please also note that the timestamps of each panorama should be kept as consistent as possible.
 
 #### Method 2: Automatic Route Generation (Interactive Map)
 
 Use an interactive map interface to select start and end points:
 
 ```shell
-python googledataprocess.py --api-key YOUR_API_KEY --seed YOUR_DATA_SEED --mode interactive
+python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --mode interactive
 ```
 
 This will open a browser window where you can:
@@ -40,7 +42,7 @@ The system will automatically generate a route and download Street View images.
 Provide start and end coordinates directly:
 
 ```shell
-python googledataprocess.py --api-key YOUR_API_KEY --seed YOUR_DATA_SEED --mode auto --start "37.7749,-122.4194" --end "37.7833,-122.4167" --samples 15
+python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --mode auto --start "37.7749,-122.4194" --end "37.7833,-122.4167" --samples 15
 ```
 
 Parameters:
@@ -52,48 +54,97 @@ Parameters:
 
 Regardless of which method you used to prepare the data, the final processing step is the same:
 
+#### Step2.1: Parse the URL
 ```shell
-python googledataprocess.py --api-key YOUR_API_KEY --seed YOUR_DATA_SEED
+python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --function process
 ```
 
-If you've already generated the `url.txt` through Method 2 or 3, you can use the default `--mode manual` option.
+If you've already generated the `url.txt`, you can use the default `--mode manual` option.
 
-This command will create a `route.html`, `route_only_end.html` and some streetview images under the `googledata/seed{YOUR_DATA_SEED}/`.
+This command will create the `pano.json` and `points.html` under the `googledata/place{PLACE_ID}/`. The `pano.json` is in the following format:
+```json
+{
+    "nodes": {
+        "ouAP9cMbZxj6zs1epXfEbA": {
+            "lat": 42.3634133,
+            "lng": -71.1275418
+        },
+        "HPrMZEbfmPETEEeX4qGrqA": {
+            "lat": 42.3634014,
+            "lng": -71.1273938
+        },
+        ...
+    }
+}
+```
+The `points.html` will display the positions of each point. When you click the dot of a location by mouse, its `pano_id` will be displayed. Like the following figure:
 
+![points.png](docs/resources/points.png)
+
+#### Step2.2: Download streetview by Google Map API
+```shell
+python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --function download
+```
+
+After this, the structure of the directory will be like the following:
 ```
 └── googledata
-    ├── seed0
+    ├── place0
         ├── url.txt
         ├── pano.json
         ├── points.html
-        ├── {panoid}_{Camera_label}.jpg
-        ├── {panoid}_{Camera_label}_w_bbox.jpg
-    ├── seed1
+        ├── id_{panoid}_{Camera_label}.jpg
+    ├── place1
+        ├── ...
     ├── ...
+```
+
+### Step3: Sample a Trajectory from a Place
+
+```
+python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --function write --traj-id TRAJ_ID --stride STRIDE --renderzvous_point_pano_id ID
+```
+
+This command will use location in `place{PLACE_ID}` to form a trajectory in `traj{TRAJ_ID}`. The `stride` control the sample density. The `renderzvous_point_pano_id` can be None. If none, it will automatically choose the one in the middle. The results will be save in the `metainfo.json` and `route.html` under the directory `textdata/traj{TRAJ_ID}/`. 
+
+The `metainfo.json` may look like this
+```json
+{
+    "place": 0,
+    "stride": 2,
+    "renderzvous point": "cOOc3ZlgtdgALMyKuSr7gg",
+    "Alice points": [
+        "ouAP9cMbZxj6zs1epXfEbA",
+        "98xr22ZodDaNvQOMfZSokQ",
+        "pUyk49zNV0ufXKeXFizk6w",
+        "vz2JanisxR6STKZC6tr8KA"
+    ],
+    "Bob points": [
+        "QuWtKG6RBvV7HypaL7LWmg",
+        "9RES6v0M_QVD4Or2bO9k9g",
+        "JM7zdBEXyv-sPHC44j3Tsg",
+        "e9uSRw2GwkRLWJ1KKGoQTA"
+    ]
+}
+```
+
+The `route.html` will be like this after rendered by browser
+
+![route.png](docs/resources/route.png)
+
+### Step4. Label Image with Text
+
+```json
 └── textdata
     ├── traj0
         ├── metainfo.json
         ├── route.html
         ├── answer.json
-```
-Assume we have a simulation. then we do not need the street view graph to eval our agents. 
-The `metainfo.json` may look like this
-```json
-{
-    "stride": 2,
-    "renderzvous point": 5, 
-    "Alice points": pano_id_1, pano_id_2, ...
-    "Bob points": pano_id_1, pano_id_2, ...
-}
+    ├── traj1
+        ├── ...
+    ├── ...
 ```
 
-The `route.html` will be like this after rendered by browser
-![route.png](docs/resources/route.png)
-
-The `route_only_end.html` will be like this after rendered by browser
-![route_only_end.png](docs/resources/route_only_end.png)
-
-### Step3: Label Image with Text
 ```python
 python labeldata.py
 ```
@@ -117,7 +168,7 @@ This can convert the `googledata/seed{SEED}/answer_user.txt` to `googledata/seed
 To annotate objects in Street View images with bounding boxes:
 
 ```shell
-python bbox_annotator.py --data-dir googledata --seed YOUR_DATA_SEED
+python bbox_annotator.py --data-dir googledata --seed PLACE_ID
 ```
 
 The bounding box annotator provides a user-friendly interface for annotating important objects in Street View images. Here's how to use it:

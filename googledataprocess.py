@@ -1,7 +1,6 @@
 import re
 import json
 import os
-import folium.features
 import requests
 import folium
 import polyline
@@ -10,20 +9,13 @@ import tempfile
 import webbrowser
 from typing import List, Tuple, Dict
 from data_utils import calculate_bearing
-# import matplotlib.pyplot as plt
-# import cartopy.crs as ccrs
-# import cartopy.feature as cfeature
-# from selenium import webdriver
-# from selenium.webdriver.chrome.options import Options
-# from webdriver_manager.chrome import ChromeDriverManager
-# from selenium.webdriver.chrome.service import Service
 
 class GoogleDataProcessor:
     def __init__(self, seed: int, api_key: str):
         """
         Args:
-            seed (int): random seed used for data directory naming
-            api_key (str): Google Maps API key
+            seed (int): id for place in google data
+            api_key (str): Google Map API key
         """
         self.seed = seed
         self.api_key = api_key
@@ -33,19 +25,28 @@ class GoogleDataProcessor:
         self.cam_num = 4
         self.label_list = ['front', 'right', 'back', 'left']
 
-        # Create data directory based on random seed
+        # Create data directory based on place id
         self.data_dir = f'./googledata/place{self.seed}'
         os.makedirs(self.data_dir, exist_ok=True)
         self.json_path = os.path.join(self.data_dir, 'pano.json')
         self.url_path = os.path.join(self.data_dir, 'url.txt')
         self.points_html_path = os.path.join(self.data_dir, 'points.html')
 
-    def extract_graph_data(self, strings_list: List[str]) -> Dict:
-        """Read urls from a list of strings and extract (lat, lng, pano_id) for all locations"""
+    def extract_graph_data(self, 
+            strings_list: List[str]
+        ) -> Dict:
+        """
+        Read urls from a list of strings and extract (lat, lng, pano_id) for all locations
+        
+        Args:
+            strings_list: List of strings containing URLs with coordinates and pano_id
+        Returns:
+            Dictionary with keys 'nodes' containing lat, lng, pano_id for each location
+        """
         nodes = {}
         
-        for _, s in enumerate(strings_list, start=0): # 0 is the start point of Alice, 1 is the waypoint 1 in route.html
-            # 1. Get lat and lng from the string
+        for _, s in enumerate(strings_list, start=0):
+            # Get lat and lng from the string
             lat, lng = None, None
             strict_match = self.coord_pattern_strict.search(s)
             if strict_match:
@@ -55,65 +56,41 @@ class GoogleDataProcessor:
             else:
                 raise ValueError(f"No valid coordinates found in string: {s}")
 
-            # 2. Extract pano_id
+            # Extract pano_id
             pano_match = self.pano_pattern.search(s)
             pano_id = pano_match.group(1) if pano_match else None
 
-            # 3. Store in dictionary
+            # Store in dictionary
             if lat is not None and lng is not None:
                 nodes[pano_id] = {
                     'lat': lat,
                     'lng': lng
                 }
         
+        # Plot points on a map
         self.plot_points(nodes=nodes)
 
         return {'nodes': nodes}
 
-    def extract_route_data(self, strings_list: List[str]) -> Dict:
-        """Warning: This method is deprecated. Use `extract_graph_data` instead.
-        Read urls from a list of strings and extract (lat, lng, pano_id) for all locations"""
-        route = {}
-        
-        for idx, s in enumerate(strings_list, start=0): # 0 is the start point of Alice, 1 is the waypoint 1 in route.html
-            # 1. Get lat and lng from the string
-            lat, lng = None, None
-            strict_match = self.coord_pattern_strict.search(s)
-            if strict_match:
-                lat, lng = float(strict_match.group(1)), float(strict_match.group(2))
-                assert -90 <= lat <= 90, "lat must be between -90 and 90"
-                assert -180 <= lng <= 180, "lng must be between -180 and 180"
-            else:
-                raise ValueError(f"No valid coordinates found in string: {s}")
-
-            # 2. Extract pano_id
-            pano_match = self.pano_pattern.search(s)
-            pano_id = pano_match.group(1) if pano_match else None
-
-            # 3. Store in dictionary
-            if lat is not None and lng is not None:
-                route[idx] = {
-                    'lat': lat,
-                    'lng': lng,
-                    'panoid': pano_id
-                }
-        
-        return {'route': route}
-
     def process_urls_to_json(self):
         """Process URLs from the text file and save to JSON"""
+        # read urls from the text file
         with open(self.url_path, 'r', encoding='utf-8') as f:
             strings_list = [line.strip() for line in f if line.strip()]
         if not strings_list:
             raise ValueError("Input file is empty or format is incorrect")
+        
+        # Parse graph data from the list of strings
         route_data = self.extract_graph_data(strings_list)
+
+        # Save the route data to JSON file
         with open(self.json_path, 'w', encoding='utf-8') as f:
             json.dump(route_data, f, indent=4, ensure_ascii=False)
-        print(f"Saved to {self.json_path}")
+        print(f"Points saved to {self.json_path}")
 
     def parse_pano_json_to_dict(self) -> Dict[str, Tuple[float, float]]:
         """
-        Parse JSON file to get points
+        Parse JSON file to get points as a dict
 
         Return:
             points_list: List of tuples with (pano_id, (lat, lng))
@@ -126,7 +103,7 @@ class GoogleDataProcessor:
     
     def parse_pano_json_to_list(self) -> List[Tuple[str, Tuple[float, float]]]:
         """
-        Parse JSON file to get points
+        Parse JSON file to get points as a list of tuples
 
         Return:
             points_list: List of tuples with (pano_id, (lat, lng))
@@ -136,31 +113,10 @@ class GoogleDataProcessor:
         nodes = data['nodes']
         points_list = [(pano_id, (info['lat'], info['lng'])) for pano_id, info in nodes.items()]
         return points_list
-        
-        # total_len = len(points_list)
-        # Alice_points_list = []
-        # Bob_points_list = []
-        
-        # if total_len % 2 == 0:
-        #     Alice_points_list.extend(points_list[:total_len//2][::self.stride])
-        #     Bob_points_list.extend(points_list[total_len//2:][::-1][::self.stride])
-        #     end_point = (
-        #         (points_list[total_len//2 - 1][0] + points_list[total_len//2][0]) / 2,
-        #         (points_list[total_len//2 - 1][1] + points_list[total_len//2][1]) / 2
-        #     )
-
-        # self.plot_agent_positions_to_image(
-        #     alice_coord=Alice_points_list[0],
-        #     bob_coord=Bob_points_list[0],
-        #     meet_coord=end_point,
-        # )
-        
-        # return Alice_points_list, Bob_points_list, end_point
     
-    def add_fore_heading_to_points(
-        self, 
-        points_list: List[Tuple[str, Tuple[float, float]]]
-    ) -> Dict[str, Tuple[float, float, float]]:
+    def add_fore_heading_to_points(self, 
+            points_list: List[Tuple[str, Tuple[float, float]]]
+        ) -> Dict[str, Tuple[float, float, float]]:
         """
         Add fore_heading to each point tuple in points_dict.
         The heading is calculated from the current point to the next point.
@@ -197,14 +153,6 @@ class GoogleDataProcessor:
         points_list = self.parse_pano_json_to_list()
         points_dict = self.add_fore_heading_to_points(points_list)
 
-        # self.plot_agent_positions_to_image_w_heading(
-        #     alice_coord=(points_dict['Alice'][0][0], points_dict['Alice'][0][1]),
-        #     alice_direction=points_dict['Alice'][0][2],
-        #     bob_coord=(points_dict['Bob'][0][0], points_dict['Bob'][0][1]),
-        #     bob_direction=points_dict['Bob'][0][2],
-        #     meet_coord=(points_dict['Alice'][-1][0], points_dict['Alice'][-1][1])
-        # )
-
         for key, value in points_dict.items():
             latitude, longitude, fore_heading = value
             heading_list = [(fore_heading + i * (360 / self.cam_num)) % 360 for i in range(self.cam_num)]
@@ -220,7 +168,7 @@ class GoogleDataProcessor:
                     'location': f'{latitude},{longitude}',
                     'heading': heading,
                     'source': 'outdoor',
-                    'fov': 90, 
+                    'fov': 90,
                     'pitch': 30,
                     'key': self.api_key
                 }
@@ -234,8 +182,7 @@ class GoogleDataProcessor:
                 else:
                     print(f"Error state: {response.status_code}. Error msg: {response.text}")
     
-    def plot_points(self, nodes: Dict[str, Dict[str, float]],
-                    zoom_start: int = 20) -> None:
+    def plot_points(self, nodes: Dict[str, Dict[str, float]], zoom_start: int = 20):
         """
         Plot points on a map using Folium and save to HTML file
         
@@ -264,128 +211,13 @@ class GoogleDataProcessor:
             ).add_to(m)
         
         # Save to HTML file in the data directory
-
         m.save(self.points_html_path)
         print(f"Nodes saved to {self.points_html_path}")
-    
-    def sample_points_by_stride(
-        self,
-        points_list: List[Tuple[str, Tuple[float, float]]],
-        traj_id: int = 0,
-        stride: int = 1,
-    ) -> List[Tuple[str, Tuple[float, float]]]:
-        textdata_dir = f'./textdata/traj{traj_id}'
-        os.makedirs(textdata_dir, exist_ok=True)
-        metainfo_path = os.path.join(textdata_dir, 'metainfo.json')
-
-        len_points = len(points_list)
-        renderzvous_point = points_list[len_points // 2]
-        renderzvous_point_pano_id = renderzvous_point[0]
-        alice_points_list = points_list[:len_points // 2][::stride]
-        bob_points_list = points_list[(len_points // 2 + 1):][::-1][::stride]
-
-        # save all the information to a json file
-        metainfo = {
-            'stride': stride,
-            'renderzvous point': renderzvous_point_pano_id,
-            'Alice points': [pano_id for pano_id, _ in alice_points_list],
-            'Bob points': [pano_id for pano_id, _ in bob_points_list],
-        }
-        with open(metainfo_path, 'w', encoding='utf-8') as f:
-            json.dump(metainfo, f, indent=4, ensure_ascii=False)
-        print(f"Saved trajectory metainfo to {metainfo_path} with stride {stride}")
-        
-        # plot the route
-        self.plot_route(
-            renderzvous_point=renderzvous_point,
-            alice_points_list=alice_points_list,
-            bob_points_list=bob_points_list,
-            traj_id=traj_id,
-        )
-        print(f"Route plotted and saved to {textdata_dir}/route.html")
-
-    def write_traj_metainfo(self, traj_id = 0, stride = -1, renderzvous_point_pano_id = None):
-        """ Write traj information to a text file
-        Args:
-            traj_id (int): The trajectory ID, default is 0.
-            stride (int): The stride for the trajectory, default is 1.
-        """
-        # mode 1, only input a stride, calculate the alice route and bob route automatically acoording to the stride. 
-        if renderzvous_point_pano_id is not None:
-            points_dict = self.parse_pano_json_to_dict()
-            # check if the renderzvous point is in the points_dict
-            if renderzvous_point_pano_id not in points_dict:
-                raise ValueError(f"Renderzvous point {renderzvous_point_pano_id} not found in pano.json")
-            
-            copy_flag = False
-            alice_points_list = []
-            bob_points_list = []
-            for pano_id, location in points_dict.items():
-                if pano_id == renderzvous_point_pano_id:
-                    copy_flag = True
-                    continue  # skip the renderzvous point itself
-                if copy_flag:
-                    bob_points_list.append((pano_id, location))
-                else:
-                    alice_points_list.append((pano_id, location))
-                
-            # then sample the points by stride
-            if stride > 0:
-                alice_points_list = alice_points_list[::stride]
-                bob_points_list = bob_points_list[::-1][::stride]
-                # append alice and bob points to the same length, if bob < alice, then copy the last bob point
-                if len(bob_points_list) < len(alice_points_list):
-                    last_bob_point = bob_points_list[-1]
-                    bob_points_list.extend([last_bob_point] * (len(alice_points_list) - len(bob_points_list)))
-                elif len(bob_points_list) > len(alice_points_list):
-                    last_alice_point = alice_points_list[-1]
-                    alice_points_list.extend([last_alice_point] * (len(bob_points_list) - len(alice_points_list)))
-
-                # save all the information to a json file
-                metainfo = {
-                    'stride': stride,
-                    'renderzvous point': renderzvous_point_pano_id,
-                    'Alice points': [pano_id for pano_id, _ in alice_points_list],
-                    'Bob points': [pano_id for pano_id, _ in bob_points_list],
-                }
-                textdata_dir = f'./textdata/traj{traj_id}'
-                os.makedirs(textdata_dir, exist_ok=True)
-                metainfo_path = os.path.join(textdata_dir, 'metainfo.json')
-                with open(metainfo_path, 'w', encoding='utf-8') as f:
-                    json.dump(metainfo, f, indent=4, ensure_ascii=False)
-                print(f"Saved trajectory metainfo to {metainfo_path} with stride {stride}")
-
-                # plot the route
-                renderzvous_point_location = points_dict[renderzvous_point_pano_id]
-                self.plot_route(
-                    renderzvous_point=(renderzvous_point_pano_id, renderzvous_point_location),
-                    alice_points_list=alice_points_list,
-                    bob_points_list=bob_points_list,
-                    traj_id=traj_id,
-                )
-
-        else:
-            if stride > 0:
-                points_list = self.parse_pano_json_to_list()
-                # points_list_only_pano_id = [pano_id for pano_id, _ in points_list]
-                len_points = len(points_list)
-                assert len_points > 0, "No points found in pano.json"
-                if len_points % 2 == 0: # even number of points
-                    points_list.pop() # remove the last point
-                    len_points -= 1
-                # else: # odd number of points, choose the middle point as the end point
-                #     pass
-                self.sample_points_by_stride(
-                    points_list=points_list,
-                    traj_id=traj_id,
-                    stride=stride,
-                )
 
     def plot_route(self, renderzvous_point: Tuple[str, Tuple[float, float]],
                    alice_points_list: List[Tuple[str, Tuple[float, float]]],
                    bob_points_list: List[Tuple[str, Tuple[float, float]]], 
-                   traj_id: int, 
-                   zoom_start: int = 20) -> None:
+                   traj_id: int, zoom_start: int = 20):
         """
         Plot route on a map using Folium and save to HTML file
         
@@ -450,7 +282,124 @@ class GoogleDataProcessor:
         # Save to HTML file in the data directory
         full_output_path = f'./textdata/traj{traj_id}/route.html'
         m.save(full_output_path)
-        print(f"Route saved to {full_output_path}")
+        print(f"Route plotted and saved to {full_output_path}")
+    
+    def sample_points_by_stride(self, 
+            points_list: List[Tuple[str, Tuple[float, float]]],
+            traj_id: int = 0,
+            stride: int = 1
+        ) -> List[Tuple[str, Tuple[float, float]]]:
+        textdata_dir = f'./textdata/traj{traj_id}'
+        os.makedirs(textdata_dir, exist_ok=True)
+        metainfo_path = os.path.join(textdata_dir, 'metainfo.json')
+
+        len_points = len(points_list)
+        renderzvous_point = points_list[len_points // 2]
+        renderzvous_point_pano_id = renderzvous_point[0]
+        alice_points_list = points_list[:len_points // 2][::stride]
+        bob_points_list = points_list[(len_points // 2 + 1):][::-1][::stride]
+
+        # save all the information to a json file
+        metainfo = {
+            'place': self.seed,
+            'stride': stride,
+            'renderzvous point': renderzvous_point_pano_id,
+            'Alice points': [pano_id for pano_id, _ in alice_points_list],
+            'Bob points': [pano_id for pano_id, _ in bob_points_list],
+        }
+        with open(metainfo_path, 'w', encoding='utf-8') as f:
+            json.dump(metainfo, f, indent=4, ensure_ascii=False)
+        print(f"Saved trajectory metainfo to {metainfo_path} with stride {stride}")
+        
+        # plot the route
+        self.plot_route(
+            renderzvous_point=renderzvous_point,
+            alice_points_list=alice_points_list,
+            bob_points_list=bob_points_list,
+            traj_id=traj_id,
+        )
+
+    def write_traj_metainfo(self, traj_id: int = -1, 
+                            stride: int = 1, 
+                            renderzvous_point_pano_id: str = None):
+        """ Write traj information to a text file
+
+        Args:
+            traj_id (int): The trajectory ID, default is -1.
+            stride (int): The stride for the trajectory, default is 1.
+            renderzvous_point_pano_id (str): The panorama ID of the rendezvous point, default is None.
+        """
+        # mode 1, only input a stride, calculate the alice route and bob route automatically acoording to the stride. 
+        if renderzvous_point_pano_id is not None:
+            points_dict = self.parse_pano_json_to_dict()
+            # check if the renderzvous point is in the points_dict
+            if renderzvous_point_pano_id not in points_dict:
+                raise ValueError(f"Renderzvous point {renderzvous_point_pano_id} not found in pano.json")
+            
+            copy_flag = False
+            alice_points_list = []
+            bob_points_list = []
+            for pano_id, location in points_dict.items():
+                if pano_id == renderzvous_point_pano_id:
+                    copy_flag = True
+                    continue  # skip the renderzvous point itself
+                if copy_flag:
+                    bob_points_list.append((pano_id, location))
+                else:
+                    alice_points_list.append((pano_id, location))
+                
+            # then sample the points by stride
+            if stride > 0:
+                alice_points_list = alice_points_list[::stride]
+                bob_points_list = bob_points_list[::-1][::stride]
+                # append alice and bob points to the same length, if bob < alice, then copy the last bob point
+                if len(bob_points_list) < len(alice_points_list):
+                    last_bob_point = bob_points_list[-1]
+                    bob_points_list.extend([last_bob_point] * (len(alice_points_list) - len(bob_points_list)))
+                elif len(bob_points_list) > len(alice_points_list):
+                    last_alice_point = alice_points_list[-1]
+                    alice_points_list.extend([last_alice_point] * (len(bob_points_list) - len(alice_points_list)))
+
+                # save all the information to a json file
+                metainfo = {
+                    'place': self.seed,
+                    'stride': stride,
+                    'renderzvous point': renderzvous_point_pano_id,
+                    'Alice points': [pano_id for pano_id, _ in alice_points_list],
+                    'Bob points': [pano_id for pano_id, _ in bob_points_list],
+                }
+                textdata_dir = f'./textdata/traj{traj_id}'
+                os.makedirs(textdata_dir, exist_ok=True)
+                metainfo_path = os.path.join(textdata_dir, 'metainfo.json')
+                with open(metainfo_path, 'w', encoding='utf-8') as f:
+                    json.dump(metainfo, f, indent=4, ensure_ascii=False)
+                print(f"Saved trajectory metainfo to {metainfo_path} with stride {stride}")
+
+                # plot the route
+                renderzvous_point_location = points_dict[renderzvous_point_pano_id]
+                self.plot_route(
+                    renderzvous_point=(renderzvous_point_pano_id, renderzvous_point_location),
+                    alice_points_list=alice_points_list,
+                    bob_points_list=bob_points_list,
+                    traj_id=traj_id,
+                )
+
+        else:
+            if stride > 0:
+                points_list = self.parse_pano_json_to_list()
+                # points_list_only_pano_id = [pano_id for pano_id, _ in points_list]
+                len_points = len(points_list)
+                assert len_points > 0, "No points found in pano.json"
+                if len_points % 2 == 0: # even number of points
+                    points_list.pop() # remove the last point
+                    len_points -= 1
+                # else: # odd number of points, choose the middle point as the end point
+                #     pass
+                self.sample_points_by_stride(
+                    points_list=points_list,
+                    traj_id=traj_id,
+                    stride=stride,
+                )
 
     def set_api_key(self, api_key: str):
         """Set Google Maps API key"""
@@ -678,11 +627,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Google Street View Data Download Tool")
     parser.add_argument("--api-key", required=True, help="Google Maps API Key")
     parser.add_argument("--seed", type=int, help="Random seed for data directory naming")
+
     parser.add_argument("--mode", choices=["manual", "auto", "interactive"], default="manual",
                         help="Mode: manual (use url.txt), auto (provide start/end), interactive (map selector)")
+    
     parser.add_argument("--start", help="Start location (lat,lng) for auto mode")
     parser.add_argument("--end", help="End location (lat,lng) for auto mode") 
     parser.add_argument("--samples", type=int, default=10, help="Number of sample points for auto mode")
+    
+    parser.add_argument("--function", choices=["process", "download", "write"], default="process",
+                        help="Function to execute: process (process urls to json), download (download street view images), write (write trajectory metainfo)")
+    parser.add_argument("--traj-id", type=int, default=-1, help="Trajectory ID for write mode")
+    parser.add_argument("--stride", type=int, default=1, help="Stride for sampling points in write mode")
+    parser.add_argument("--pano-id", type=str, default=None, help="Pano ID for write mode, if not provided, will sample points automatically")
     args = parser.parse_args()
 
     processor = GoogleDataProcessor(seed=args.seed, api_key=args.api_key)
@@ -695,6 +652,13 @@ if __name__ == "__main__":
         processor.generate_route_interactive()
     
     # Continue with normal processing
-    # processor.process_urls_to_json()
-    # processor.download_streetview_images()
-    processor.write_traj_metainfo(traj_id=1, stride=2, renderzvous_point_pano_id='9RES6v0M_QVD4Or2bO9k9g')
+    if args.function == "process":
+        processor.process_urls_to_json()
+    elif args.function == "download":
+        processor.download_streetview_images()
+    elif args.function == "write":
+        processor.write_traj_metainfo(
+            traj_id=args.traj_id,
+            stride=args.stride,
+            renderzvous_point_pano_id=args.pano_id
+        )
