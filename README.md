@@ -65,11 +65,26 @@ This command will create a `route.html`, `route_only_end.html` and some streetvi
     ├── seed0
         ├── url.txt
         ├── pano.json
-        ├── route.html
-        ├── route_only_end.html
-        ├── streetview_{Agent}_{Time_index}_{Camera_label}.jpg
+        ├── points.html
+        ├── {panoid}_{Camera_label}.jpg
+        ├── {panoid}_{Camera_label}_w_bbox.jpg
     ├── seed1
     ├── ...
+└── textdata
+    ├── traj0
+        ├── metainfo.json
+        ├── route.html
+        ├── answer.json
+```
+Assume we have a simulation. then we do not need the street view graph to eval our agents. 
+The `metainfo.json` may look like this
+```json
+{
+    "stride": 2,
+    "renderzvous point": 5, 
+    "Alice points": pano_id_1, pano_id_2, ...
+    "Bob points": pano_id_1, pano_id_2, ...
+}
 ```
 
 The `route.html` will be like this after rendered by browser

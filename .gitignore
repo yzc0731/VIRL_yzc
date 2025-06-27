@@ -20,6 +20,8 @@ temp_files/*
 *.editorconfig
 *.vscode
 data/benchmark/*
-googledata
+googledata*
 streetview_images
 tmp*
+textdata
+answerdata
