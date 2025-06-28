@@ -184,23 +184,12 @@ The `route.html` will be like this after rendered by browser
 
 ![route.png](docs/resources/route.png)
 
-### Step5. Label Image with Text (TODO)
-
-```json
-└── textdata
-    ├── traj0
-        ├── metainfo.json
-        ├── route.html
-        ├── answer.json
-    ├── traj1
-        ├── ...
-    ├── ...
-```
+### Step5. Label Image with Text (Manual)
 
 ```python
 python labeldata.py
 ```
-The terminal will output a url like `http://127.0.0.1:5000` copy it and append a seed number like `http://127.0.0.1:5000/18`. It will access the images under the folder `googledata/seed18`. The website will display the images like this. 
+The terminal will output a url like `http://127.0.0.1:5000` copy it and append a seed number like `http://127.0.0.1:5000/0`. It will access the images under the folder `textdata/traj0/metainfo.json`. Acoording to the placeid and panoid inside to load images under `googledata/place{PLACE_ID}`. The website will display the images like this. 
 
 ![website.png](docs/resources/website.png)
 ![website2.png](docs/resources/website2.png)
@@ -214,3 +203,15 @@ Then
 python txt2json.py --seed YOUR_DATA_SEED
 ```
 This can convert the `googledata/seed{SEED}/answer_user.txt` to `googledata/seed{SEED}/answer.json` like the format in `docs/resources/answer_example.json`
+
+The final directory will like this: 
+```json
+└── textdata
+    ├── traj0
+        ├── metainfo.json
+        ├── route.html
+        ├── answer.json
+    ├── traj1
+        ├── ...
+    ├── ...
+```
