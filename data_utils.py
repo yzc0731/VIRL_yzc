@@ -1,4 +1,7 @@
 import math
+import os
+import json
+from typing import List, Dict, Tuple
 
 def calculate_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """
@@ -32,3 +35,39 @@ def calculate_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> flo
     bearing = (bearing + 360) % 360
     
     return bearing
+
+def get_panoids_from_json(json_path: str) -> List[str]:
+    """Get all available panoids from the pano.json"""
+    assert os.path.exists(json_path), f'file {json_path} not found'
+    with open(json_path, 'r') as f:
+        data = json.load(f)
+    nodes = data.get("nodes", [])
+    panoids = list(nodes.keys())
+    return panoids
+
+
+def parse_pano_json_to_dict(json_path: str) -> Dict[str, Tuple[float, float]]:
+    """
+    Parse JSON file to get points as a dict
+
+    Return:
+        points_list: List of tuples with (pano_id, (lat, lng))
+    """ 
+    with open(json_path, 'r') as f:
+        data = json.load(f)
+    nodes = data['nodes']
+    points_dict = {pano_id: (info['lat'], info['lng']) for pano_id, info in nodes.items()}
+    return points_dict
+
+def parse_pano_json_to_list(json_path: str) -> List[Tuple[str, Tuple[float, float]]]:
+    """
+    Parse JSON file to get points as a list of tuples
+
+    Return:
+        points_list: List of tuples with (pano_id, (lat, lng))
+    """ 
+    with open(json_path, 'r') as f:
+        data = json.load(f)
+    nodes = data['nodes']
+    points_list = [(pano_id, (info['lat'], info['lng'])) for pano_id, info in nodes.items()]
+    return points_list

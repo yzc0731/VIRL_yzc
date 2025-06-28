@@ -8,36 +8,45 @@ import time
 import tempfile
 import webbrowser
 from typing import List, Tuple, Dict
-from data_utils import calculate_bearing
+from data_utils import calculate_bearing, parse_pano_json_to_list
 
 class GoogleDataProcessor:
-    def __init__(self, random_seed: int = 19, api_key: str = None):
+    def __init__(self, seed: int, api_key: str):
         """
         Args:
-            random_seed (int): random seed used for data directory naming
-            api_key (str): Google Maps API key
+            seed (int): id for place in google data
+            api_key (str): Google Map API key
         """
-        self.random_seed = random_seed
+        self.seed = seed
         self.api_key = api_key
-        self.coord_pattern_strict = re.compile(r'/@(-?\d+\.\d+),(-?\d+\.\d+),3a')
+        self.coord_pattern_strict = re.compile(r'/@(-?\d+\.\d+),(-?\d+\.\d+),')
         self.pano_pattern = re.compile(r'!1s(.*?)!2e')
-        self.stride = 2
         self.street_view_url = "https://maps.googleapis.com/maps/api/streetview"
         self.cam_num = 4
-        self.label_list = ['front', 'right', 'back', 'left']
+        self.view_label_list = ['front', 'right', 'back', 'left']
 
-        # Create data directory based on random seed
-        self.data_dir = f'./googledata/seed{self.random_seed}'
+        # Create data directory based on place id
+        self.data_dir = f'./googledata/place{self.seed}'
         os.makedirs(self.data_dir, exist_ok=True)
         self.json_path = os.path.join(self.data_dir, 'pano.json')
-        self.txt_path = os.path.join(self.data_dir, 'url.txt')
+        self.url_path = os.path.join(self.data_dir, 'url.txt')
+        self.points_html_path = os.path.join(self.data_dir, 'points.html')
 
-    def extract_route_data(self, strings_list: List[str]) -> Dict:
-        """Read urls from a list of strings and extract (lat, lng, pano_id) for all locations"""
-        route = {}
+    def extract_graph_data(self, 
+            strings_list: List[str]
+        ) -> Dict:
+        """
+        Read urls from a list of strings and extract (lat, lng, pano_id) for all locations
         
-        for idx, s in enumerate(strings_list, start=1):
-            # 1. Get lat and lng from the string
+        Args:
+            strings_list: List of strings containing URLs with coordinates and pano_id
+        Returns:
+            Dictionary with keys 'nodes' containing lat, lng, pano_id for each location
+        """
+        nodes = {}
+
+        for _, s in enumerate(strings_list, start=0):
+            # Get lat and lng from the string
             lat, lng = None, None
             strict_match = self.coord_pattern_strict.search(s)
             if strict_match:
@@ -47,220 +56,306 @@ class GoogleDataProcessor:
             else:
                 raise ValueError(f"No valid coordinates found in string: {s}")
 
-            # 2. Extract pano_id
+            # Extract pano_id
             pano_match = self.pano_pattern.search(s)
             pano_id = pano_match.group(1) if pano_match else None
 
-            # 3. Store in dictionary
+            # Store in dictionary
             if lat is not None and lng is not None:
-                route[idx] = {
-                    'lat': lat,
-                    'lng': lng,
-                    'panoid': pano_id
-                }
+                nodes[pano_id] = {'lat': lat, 'lng': lng}
         
-        return {'route': route}
+        # Plot points on a map
+        self.plot_points(nodes=nodes)
 
-    def process_urls_to_json(self):
+        return {'nodes': nodes}
+
+    def process_urls_to_json(self) -> None:
         """Process URLs from the text file and save to JSON"""
-        with open(self.txt_path, 'r', encoding='utf-8') as f:
+        # read urls from the text file
+        with open(self.url_path, 'r', encoding='utf-8') as f:
             strings_list = [line.strip() for line in f if line.strip()]
         if not strings_list:
             raise ValueError("Input file is empty or format is incorrect")
-        route_data = self.extract_route_data(strings_list)
+        
+        # Parse graph data from the list of strings
+        route_data = self.extract_graph_data(strings_list)
+
+        # Save the route data to JSON file
         with open(self.json_path, 'w', encoding='utf-8') as f:
             json.dump(route_data, f, indent=4, ensure_ascii=False)
-        print(f"Saved to {self.json_path}")
-
-    def parse_pano_json(self) -> Tuple[List, List, Tuple]:
-        """
-        Parse JSON file to get Alice and Bob's route points and the end point
-
-        Return:
-            Alice_points_list: Alice route points
-            Bob_points_list: Bob route points
-            end_point
-        """ 
-        with open(self.json_path, 'r') as f:
-            data = json.load(f)
-        
-        points_dict = data['route']
-        points_list = []
-        for key, value in points_dict.items():
-            points_list.append((value['lat'], value['lng']))
-
-        # plot route
-        self.plot_route(coordinates=points_list)
-        
-        total_len = len(points_list)
-        Alice_points_list = []
-        Bob_points_list = []
-        
-        if total_len % 2 == 0:
-            Alice_points_list.extend(points_list[:total_len//2][::self.stride])
-            Bob_points_list.extend(points_list[total_len//2:][::-1][::self.stride])
-            end_point = (
-                (points_list[total_len//2 - 1][0] + points_list[total_len//2][0]) / 2,
-                (points_list[total_len//2 - 1][1] + points_list[total_len//2][1]) / 2
-            )
-        else:
-            Alice_points_list.extend(points_list[:total_len//2][::self.stride])
-            Bob_points_list.extend(points_list[(total_len//2 + 1):][::-1][::self.stride])
-            end_point = points_list[total_len//2]
-
-        # plot route only end points
-        only_end_points_list = [Alice_points_list[0], end_point, Bob_points_list[0]]
-        self.plot_route(coordinates=only_end_points_list, output_file='route_only_end.html')
-        
-        return Alice_points_list, Bob_points_list, end_point
+        print(f"Points saved to {self.json_path}")
     
-    def add_fore_heading_to_points(self, Alice_points_list: List[Tuple[float, float]],
-                                  Bob_points_list: List[Tuple[float, float]],
-                                    end_point: Tuple[float, float]) -> Dict[str, List[Tuple[float, float, float]]]:
+    def add_fore_heading_to_points(self, 
+            points_list: List[Tuple[str, Tuple[float, float]]]
+        ) -> Dict[str, Tuple[float, float, float]]:
         """
-        Add fore_heading to each point tuple in Alice and Bob's route points
+        Add fore_heading to each point tuple in points_dict.
+        The heading is calculated from the current point to the next point.
+        The last point's heading is set to the previous heading (since there's no next point).
+
         Args:
-            Alice_points_list: List of Alice's route points (lat, lng)
-            Bob_points_list: List of Bob's route points (lat, lng)
-            end_point: End point (lat, lng)
+            points_dict: Dictionary with pano_id as key and tuple (lat, lng) as value.
         Returns:
-            Dictionary with keys 'Alice' and 'Bob', each containing a list of tuples (lat, lng, fore_heading)
+            Dictionary with pano_id as key and tuple (lat, lng, fore_heading) as value.
         """
-        points_dict = {'Alice': [], 'Bob': []}
-        alice_last_fore_heading = None
-        for loc in Alice_points_list:
-            latitude, longitude = loc
-            fore_heading = calculate_bearing(latitude, longitude, end_point[0], end_point[1])
-            alice_last_fore_heading = fore_heading
-            points_dict['Alice'].append((latitude, longitude, fore_heading))
+        points_dict = {}
         
-        # append end point with last fore_heading to Alice's list
-        if alice_last_fore_heading is not None:
-            points_dict['Alice'].append((end_point[0], end_point[1], alice_last_fore_heading))
-
-        bob_last_fore_heading = None
-        for loc in Bob_points_list:
-            latitude, longitude = loc
-            fore_heading = calculate_bearing(latitude, longitude, end_point[0], end_point[1])
-            bob_last_fore_heading = fore_heading
-            points_dict['Bob'].append((latitude, longitude, fore_heading))
-
-        # append end point with last fore_heading to Bob's list
-        if bob_last_fore_heading is not None:
-            points_dict['Bob'].append((end_point[0], end_point[1], bob_last_fore_heading))
-
+        # Handle all points except the last one
+        for i in range(len(points_list) - 1):
+            current_pano_id, (current_lat, current_lng) = points_list[i]
+            next_pano_id, (next_lat, next_lng) = points_list[i + 1]
+            
+            heading = calculate_bearing(current_lat, current_lng, next_lat, next_lng)
+            points_dict[current_pano_id] = (current_lat, current_lng, heading)
+        
+        # Handle the last point (use previous heading)
+        last_pano_id, (last_lat, last_lng) = points_list[-1]
+        if len(points_list) > 1:
+            # Use the heading from the second-to-last point to the last point
+            points_dict[last_pano_id] = (last_lat, last_lng, heading)
+        else:
+            # Only one point, set heading to 0 (or any default value)
+            points_dict[last_pano_id] = (last_lat, last_lng, 0.0)
+        
         return points_dict
 
-    def download_streetview_images(self):
+    def download_streetview_images(self) -> None:
         """Download Google Street View images"""
-        if not self.api_key:
-            raise ValueError("API Key not set")
+        points_list = parse_pano_json_to_list(self.json_path)
+        points_dict = self.add_fore_heading_to_points(points_list)
 
-        Alice_points_list, Bob_points_list, end_point = self.parse_pano_json()
-        points_dict = self.add_fore_heading_to_points(Alice_points_list, Bob_points_list, end_point)
-        
         for key, value in points_dict.items():
-            for index, point in enumerate(value):
-                latitude, longitude, fore_heading = point
-                heading_list = [(fore_heading + i * (360 / self.cam_num)) % 360 for i in range(self.cam_num)]
+            latitude, longitude, fore_heading = value
+            heading_list = [(fore_heading + i * (360 / self.cam_num)) % 360 for i in range(self.cam_num)]
                 
-                for heading, label in zip(heading_list, self.label_list):
-                    params = {
-                        'size': '640x640',
-                        'location': f'{latitude},{longitude}',
-                        'heading': heading,
-                        'source': 'outdoor',
-                        'fov': 90, 
-                        'key': self.api_key
-                    }
+            for heading, label in zip(heading_list, self.view_label_list):
+                filename = f"id_{key}_{label}.jpg"
+                if os.path.exists(os.path.join(self.data_dir, filename)):
+                    print(f"File {filename} already exists, skipping download.")
+                    continue
 
-                    response = requests.get(self.street_view_url, params=params)
-                    if response.status_code == 200:
-                        filename = f"streetview_{key}_{index}_{label}.jpg"
-                        filepath = os.path.join(self.data_dir, filename)
-                        with open(filepath, "wb") as f:
-                            f.write(response.content)
-                        print(f"Saved to {filepath}")
-                    else:
-                        print(f"Error state: {response.status_code}")
-                        print(f"Error msg: {response.text}")
+                params = {
+                    'size': '640x640',
+                    'location': f'{latitude},{longitude}',
+                    'heading': heading,
+                    'source': 'outdoor',
+                    'fov': 90,
+                    'pitch': 30,
+                    'key': self.api_key
+                }
 
-    def plot_route(self, coordinates: List[Tuple[float, float]] = None, 
-                  output_file: str = 'route.html', 
-                  zoom_start: int = 15) -> None:
+                response = requests.get(self.street_view_url, params=params)
+                if response.status_code == 200:   
+                    filepath = os.path.join(self.data_dir, filename)
+                    with open(filepath, "wb") as f:
+                        f.write(response.content)
+                    print(f"Saved to {filepath}")
+                else:
+                    print(f"Error state: {response.status_code}. Error msg: {response.text}")
+    
+    def plot_points(self, nodes: Dict[str, Dict[str, float]]) -> None:
+        """
+        Plot points on a map using Folium and save to HTML file
+        
+        Args:
+            nodes: Dictionary of nodes with keys as node IDs and values as dictionaries containing 'lat' and 'lng'
+        """
+        # convert nodes to a list of tuples
+        nodes_dict = {key: (value['lat'], value['lng']) for key, value in nodes.items()}
+        # nodes_list is the type Dict[str, Tuple[float, float]]
+
+        # Create map centered on the first coordinate
+        first_key = next(iter(nodes_dict))
+        first_value = nodes_dict[first_key]
+        m = folium.Map(location=first_value, zoom_start=20)
+        
+        # Add markers for all points (same style for all)
+        for key, value in nodes_dict.items():
+            folium.CircleMarker(
+                location=value,
+                radius=5,
+                color='orange',
+                fill=True,
+                fill_color='orange',
+                popup=f'Point {key}'
+            ).add_to(m)
+        
+        # Save to HTML file in the data directory
+        m.save(self.points_html_path)
+        print(f"Nodes saved to {self.points_html_path}")
+
+    def plot_route(self, 
+            rendezvous_point: Tuple[str, Tuple[float, float]],
+            alice_points_list: List[Tuple[str, Tuple[float, float]]],
+            bob_points_list: List[Tuple[str, Tuple[float, float]]], 
+            traj_id: int
+        ) -> None:
         """
         Plot route on a map using Folium and save to HTML file
         
         Args:
-            coordinates: List of (latitude, longitude) tuples representing the route
-            output_file: Path to save the HTML map file (default: 'route.html')
-            zoom_start: Initial zoom level for the map (default: 15)
-
-        Returns:
-            None
+            rendezvous_point: Tuple with pano_id and (lat, lng) of the rendezvous point
+            alice_points_list: List of tuples with (pano_id, (lat, lng))
+            bob_points_list: List of tuples with (pano_id, (lat, lng))
+            traj_id: Trajectory ID for saving the output file
         """
-        if not coordinates:
-            with open(self.json_path, 'r') as f:
-                data = json.load(f)
-            
-            points_dict = data['route']
-            points_list = []
-            for key, value in points_dict.items():
-                points_list.append((value['lat'], value['lng']))
-            coordinates = points_list
-
         # Create map centered on the first coordinate
-        m = folium.Map(location=coordinates[0], zoom_start=zoom_start)
-        
-        # Add the route as a polyline
-        folium.PolyLine(
-            coordinates,
-            color='blue',
-            weight=5,
-            opacity=0.8,
-            tooltip="Route"
-        ).add_to(m)
-        
+        rendezvous_point_pano_id, rendezvous_point_location = rendezvous_point
+        m = folium.Map(location=rendezvous_point_location, zoom_start=20)
+
         # Add markers for start and end points
         folium.Marker(
-            coordinates[0],
-            popup='Start',
+            rendezvous_point_location,
+            popup=f'Renderzvous {rendezvous_point_pano_id}',
             icon=folium.Icon(color='green')
         ).add_to(m)
         
-        folium.Marker(
-            coordinates[-1],
-            popup='End',
-            icon=folium.Icon(color='red')
-        ).add_to(m)
-        
         # Add clickable markers for all waypoints (excluding first and last)
-        for i, coord in enumerate(coordinates[1:-1], start=1):
+        for pano_id, coord in alice_points_list:
             folium.CircleMarker(
                 location=coord,
                 radius=5,
                 color='orange',
                 fill=True,
                 fill_color='orange',
-                popup=f'Waypoint {i}'
+                popup=f'Alice {pano_id}'
             ).add_to(m)
+        for pano_id, coord in bob_points_list:
+            folium.CircleMarker(
+                location=coord,
+                radius=5,
+                color='red',
+                fill=True,
+                fill_color='red',
+                popup=f'Bob {pano_id}'
+            ).add_to(m)
+
+        alice_polyline_coords = [coord for _, coord in alice_points_list]
+        alice_polyline_coords.append(rendezvous_point_location)
+        bob_polyline_coords = [coord for _, coord in bob_points_list]
+        bob_polyline_coords.append(rendezvous_point_location)
+        # Add the route as a polyline
+        folium.PolyLine(
+            locations=alice_polyline_coords,
+            color='orange',
+            weight=5,
+            opacity=0.8,
+            tooltip="orange"
+        ).add_to(m)
+        folium.PolyLine(
+            locations=bob_polyline_coords,
+            color='red',
+            weight=5,
+            opacity=0.8,
+            tooltip="red"
+        ).add_to(m)
         
         # Save to HTML file in the data directory
-        full_output_path = os.path.join(self.data_dir, output_file)
+        full_output_path = f'./textdata/traj{traj_id}/route.html'
         m.save(full_output_path)
-        print(f"Map saved to {full_output_path}")
+        print(f"Route plotted and saved to {full_output_path}")
 
-    def set_api_key(self, api_key: str):
+    def write_traj_metainfo(self, traj_id: int = -1, 
+                            stride: int = 1, 
+                            rendezvous_point_pano_id: str = None) -> None:
+        """
+        Write traj information to a text file.
+        This function samples points from the pano.json file based on the given stride.
+        If a rendezvous point is provided, it will split the points into Alice's and Bob's routes based on the stride.
+        If no rendezvous point is provided, it will sample points from the pano.json file and create a route with Alice's points in the first half and Bob's points in the second half.
+        The rendezvous point is the middle point of the list, and Alice's points are sampled from the first half, while Bob's points are sampled from the second half.
+        This function saves the trajectory metainfo to a JSON file and plots the route on a map.
+
+        Args:
+            traj_id (int): The trajectory ID, default is -1.
+            stride (int): The stride for the trajectory, default is 1.
+            rendezvous_point_pano_id (str): The panorama ID of the rendezvous point, default is None.
+        """
+        points_list = parse_pano_json_to_list(self.json_path)
+        alice_points_list = []
+        bob_points_list = []
+        rendezvous_point = None
+        # split the points list into two parts.
+        # mode 1: if rendezvous_point_pano_id is not None, split the points into Alice's and Bob's routes
+        if rendezvous_point_pano_id is not None:
+            found_flag = False
+            for point in points_list:
+                pano_id, location = point
+                if pano_id == rendezvous_point_pano_id:
+                    rendezvous_point = (rendezvous_point_pano_id, location)
+                    found_flag = True
+                    continue
+                if found_flag:
+                    bob_points_list.append(point)
+                else:
+                    alice_points_list.append(point)
+            if rendezvous_point is None:
+                raise ValueError(f"Rendezvous point {rendezvous_point_pano_id} not found in pano.json")
+        else: # mode 2: if rendezvous_point_pano_id is None, split the points into half
+            len_points = len(points_list)
+            assert len_points > 0, "No points found in pano.json"
+            if len_points % 2 == 0: # even number of points
+                points_list.pop() # remove the last point
+                len_points -= 1
+            # else: # odd number of points, choose the middle point as the end point
+            #     pass
+            len_points = len(points_list)
+            middle_index = len_points // 2
+            rendezvous_point = points_list[middle_index]
+            alice_points_list = points_list[:middle_index]
+            bob_points_list = points_list[(middle_index + 1):]
+
+        # then sample the points by stride
+        assert stride > 0, "Stride must be greater than 0"
+        if stride > 1:
+            alice_points_list = alice_points_list[::stride]
+            bob_points_list = bob_points_list[::stride]
+        # else: # if stride is 1, then just use the original points
+        #   pass
+
+        # reverse the Bob's points list
+        bob_points_list.reverse()
+        # Balance the lengths by extending with last point
+        len_diff = len(alice_points_list) - len(bob_points_list)
+        if len_diff > 0:
+            bob_points_list.extend([bob_points_list[-1]] * len_diff)
+        elif len_diff < 0:
+            alice_points_list.extend([alice_points_list[-1]] * (-len_diff))
+
+        # save all the information to a json file
+        metainfo = {
+            'place': self.seed,
+            'stride': stride,
+            'rendezvous point': rendezvous_point[0],
+            'Alice points': [pano_id for pano_id, _ in alice_points_list],
+            'Bob points': [pano_id for pano_id, _ in bob_points_list],
+        }
+        textdata_dir = f'./textdata/traj{traj_id}'
+        os.makedirs(textdata_dir, exist_ok=True)
+        metainfo_path = os.path.join(textdata_dir, 'metainfo.json')
+        with open(metainfo_path, 'w', encoding='utf-8') as f:
+            json.dump(metainfo, f, indent=4, ensure_ascii=False)
+        print(f"Saved trajectory metainfo to {metainfo_path} with stride {stride}")
+
+        # plot the route
+        self.plot_route(
+            rendezvous_point=rendezvous_point,
+            alice_points_list=alice_points_list,
+            bob_points_list=bob_points_list,
+            traj_id=traj_id,
+        )
+
+    def set_api_key(self, api_key: str) -> None:
         """Set Google Maps API key"""
         self.api_key = api_key
 
-    def set_random_seed(self, random_seed: int):
+    def set_seed(self, seed: int) -> None:
         """Set random seed and update related paths"""
-        self.random_seed = random_seed
-        self.data_dir = f'./googledata/seed{self.random_seed}'
+        self.seed = seed
+        self.data_dir = f'./googledata/seed{self.seed}'
         os.makedirs(self.data_dir, exist_ok=True)
         self.json_path = os.path.join(self.data_dir, 'pano.json')
-        self.txt_path = os.path.join(self.data_dir, 'url.txt')
+        self.url_path = os.path.join(self.data_dir, 'url.txt')
         
     def generate_route(self, start_location, end_location, sample_count=10, mode="walking"):
         """
@@ -330,10 +425,10 @@ class GoogleDataProcessor:
             time.sleep(0.2)
         
         # Save to url.txt
-        with open(self.txt_path, "w", encoding="utf-8") as f:
+        with open(self.url_path, "w", encoding="utf-8") as f:
             f.write("\n".join(urls))
         
-        print(f"Generated {len(urls)} Street View URLs and saved to {self.txt_path}")
+        print(f"Generated {len(urls)} Street View URLs and saved to {self.url_path}")
         return urls
     
     def generate_route_interactive(self):
@@ -475,16 +570,23 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Google Street View Data Download Tool")
     parser.add_argument("--api-key", required=True, help="Google Maps API Key")
-    parser.add_argument("--seed", type=int, help="Random seed for data directory naming")
+    parser.add_argument("--seed", type=int, help="Data ID")
+
     parser.add_argument("--mode", choices=["manual", "auto", "interactive"], default="manual",
                         help="Mode: manual (use url.txt), auto (provide start/end), interactive (map selector)")
+    
     parser.add_argument("--start", help="Start location (lat,lng) for auto mode")
     parser.add_argument("--end", help="End location (lat,lng) for auto mode") 
     parser.add_argument("--samples", type=int, default=10, help="Number of sample points for auto mode")
+    
+    parser.add_argument("--function", choices=["process", "download", "write"], default="process",
+                        help="Function to execute: process (process urls to json), download (download street view images), write (write trajectory metainfo)")
+    parser.add_argument("--traj-id", type=int, default=-1, help="Trajectory ID for write mode")
+    parser.add_argument("--stride", type=int, default=1, help="Stride for sampling points in write mode")
+    parser.add_argument("--pano-id", type=str, default=None, help="Pano ID for write mode, if not provided, will sample points automatically")
     args = parser.parse_args()
 
-    processor = GoogleDataProcessor(random_seed=args.seed)
-    processor.set_api_key(args.api_key)
+    processor = GoogleDataProcessor(seed=args.seed, api_key=args.api_key)
     
     if args.mode == "auto":
         if not args.start or not args.end:
@@ -495,5 +597,13 @@ if __name__ == "__main__":
     # elif args.mode == "manual": do nothing, just read from url.txt
     
     # Continue with normal processing
-    processor.process_urls_to_json()
-    processor.download_streetview_images()
+    if args.function == "process":
+        processor.process_urls_to_json()
+    elif args.function == "download":
+        processor.download_streetview_images()
+    elif args.function == "write":
+        processor.write_traj_metainfo(
+            traj_id=args.traj_id,
+            stride=args.stride,
+            rendezvous_point_pano_id=args.pano_id
+        )

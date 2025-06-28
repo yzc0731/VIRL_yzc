@@ -6,24 +6,26 @@ There are three ways to prepare Street View data:
 
 #### Method 1: Manual Collection (Traditional)
 
-Before data processing, you should prepare a `url.txt` under the `googledata/seed{YOUR_DATA_SEED}/`.
+Before data processing, you should prepare a `url.txt` under the `googledata/place{PLACE_ID}/`.
 
 Here is an example: [url.txt](docs/resources/url.txt)
 
-You can enter arbitrary position street view by google map like ![streetview_example.png](docs/resources/streetview_example.png)
+You can enter arbitrary position street view by google map like 
 
-Then in the streetview mode, you can go through a route like an agent. Each step you move, copy the url into `url.txt` in order. 
+![streetview_example.png](docs/resources/streetview_example.png)
+
+Then in the streetview mode, you can imagine yourself as an agent, exploring within Google Maps. Each step you move, copy the url into `url.txt` in order. 
 
 ![streetview_move_example.png](docs/resources/streetview_move_example.png)
 
-There is a `X` symbol on the ground to label where the next step is, do not move one step too far away.
+There is a `X` symbol on the ground to label where the next step is, do not move one step too far away. And please also note that the timestamps of each panorama should be kept as consistent as possible.
 
 #### Method 2: Automatic Route Generation (Interactive Map)
 
 Use an interactive map interface to select start and end points:
 
 ```shell
-python googledataprocess.py --api-key YOUR_API_KEY --seed YOUR_DATA_SEED --mode interactive
+python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --mode interactive
 ```
 
 This will open a browser window where you can:
@@ -40,7 +42,7 @@ The system will automatically generate a route and download Street View images.
 Provide start and end coordinates directly:
 
 ```shell
-python googledataprocess.py --api-key YOUR_API_KEY --seed YOUR_DATA_SEED --mode auto --start "37.7749,-122.4194" --end "37.7833,-122.4167" --samples 15
+python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --mode auto --start "37.7749,-122.4194" --end "37.7833,-122.4167" --samples 15
 ```
 
 Parameters:
@@ -52,47 +54,165 @@ Parameters:
 
 Regardless of which method you used to prepare the data, the final processing step is the same:
 
+#### Step2.1: Parse the URL
 ```shell
-python googledataprocess.py --api-key YOUR_API_KEY --seed YOUR_DATA_SEED
+python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --function process
 ```
 
-If you've already generated the `url.txt` through Method 2 or 3, you can use the default `--mode manual` option.
+If you've already generated the `url.txt`, you can use the default `--mode manual` option.
 
-This command will create a `route.html`, `route_only_end.html` and some streetview images under the `googledata/seed{YOUR_DATA_SEED}/`.
+This command will create the `pano.json` and `points.html` under the `googledata/place{PLACE_ID}/`. The `pano.json` is in the following format:
+```json
+{
+    "nodes": {
+        "ouAP9cMbZxj6zs1epXfEbA": {
+            "lat": 42.3634133,
+            "lng": -71.1275418
+        },
+        "HPrMZEbfmPETEEeX4qGrqA": {
+            "lat": 42.3634014,
+            "lng": -71.1273938
+        },
+        ...
+    }
+}
+```
+The `points.html` will display the positions of each point. When you click the dot of a location by mouse, its `pano_id` will be displayed. Like the following figure:
 
+![points.png](docs/resources/points.png)
+
+#### Step2.2: Download streetview by Google Map API
+```shell
+python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --function download
+```
+
+Image will be saved as `id_{pano_id}_{front|right|back|left}.jpg` in `googledata/place{YOUR_DATA_SEED}`. 
+
+### Step 3: Annotate Bounding Boxes
+
+To annotate objects in Street View images with bounding boxes:
+
+```shell
+python bbox_annotator.py --seed PLACE_ID
+```
+
+The bounding box annotator provides a user-friendly interface for annotating important objects in Street View images. Here's how to use it:
+
+1. After launching the tool, select a timestep from the dropdown menu and click "Load Images"
+2. Thumbnails of all available images for that timestep will appear on the right side
+3. Click on any thumbnail to load the full image for annotation
+4. To add a bounding box:
+    - Click and drag on the image to create a box around an object
+    - Enter a description for the annotated object when prompted
+5. To manage annotations:
+    - Click "Preview Boxes" to see all annotations for the current image
+    - Use "Highlight Selected Box" to view a specific annotation
+    - Use "Clear Annotations" to remove all boxes from the current image
+6. Click "Save Annotations" to store your work
+
+Annotations are saved in JSON format at `googledata/place{YOUR_DATA_SEED}/annotations.json` with normalized coordinates (0-1 range) for portability. The json file look like this:
+```json
+{
+  "zLqVt8pA8zM-5vC1WWIW8w_left": [
+    {
+      "x1": 0.2921875,
+      "y1": 0.4015625,
+      "x2": 0.83125,
+      "y2": 0.94375,
+      "description": "22222222"
+    }
+  ],
+  "7qDwoMXYQoG2h9mo7120ww_right": [
+    {
+      "x1": 0.0171875,
+      "y1": 0.178125,
+      "x2": 0.7859375,
+      "y2": 0.8703125,
+      "description": "33333"
+    },
+    ···
+  ]
+}
+```
+
+The tool automatically tracks which images have been annotated (marked with a green ✓), making it easy to track your progress across multiple sessions.
+
+After this, the structure of the directory will be like the following:
 ```
 └── googledata
-    ├── seed0
+    ├── place0
         ├── url.txt
         ├── pano.json
-        ├── route.html
-        ├── route_only_end.html
-        ├── streetview_{Agent}_{Time_index}_{Camera_label}.jpg
-    ├── seed1
+        ├── points.html
+        ├── id_{panoid}_{camera_label}.jpg
+        ├── annotations.json
+    ├── place1
+        ├── ...
     ├── ...
 ```
 
+### Step4: Sample a Trajectory from a Place
+
+```
+python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --function write --traj-id TRAJ_ID --stride STRIDE --pano-id ID
+python googledataprocess.py --api-key YOUR_API_KEY --seed 0 --function write --traj-id 0 --stride 2
+```
+
+This command will use location in `place{PLACE_ID}` to form a trajectory in `traj{TRAJ_ID}`. The `stride` control the sample density. The `pano-id` means rendezvous_point_pano_id. It can be None. If none, it will automatically choose the one in the middle. The results will be save in the `metainfo.json` and `route.html` under the directory `textdata/traj{TRAJ_ID}/`. 
+
+The `metainfo.json` may look like this
+```json
+{
+    "place": 0,
+    "stride": 2,
+    "rendezvous point": "cOOc3ZlgtdgALMyKuSr7gg",
+    "Alice points": [
+        "ouAP9cMbZxj6zs1epXfEbA",
+        "98xr22ZodDaNvQOMfZSokQ",
+        "pUyk49zNV0ufXKeXFizk6w",
+        "vz2JanisxR6STKZC6tr8KA"
+    ],
+    "Bob points": [
+        "QuWtKG6RBvV7HypaL7LWmg",
+        "9RES6v0M_QVD4Or2bO9k9g",
+        "JM7zdBEXyv-sPHC44j3Tsg",
+        "e9uSRw2GwkRLWJ1KKGoQTA"
+    ]
+}
+```
+
 The `route.html` will be like this after rendered by browser
+
 ![route.png](docs/resources/route.png)
 
-The `route_only_end.html` will be like this after rendered by browser
-![route_only_end.png](docs/resources/route_only_end.png)
+### Step5. Label Image with Text (Manual)
 
-### Step3: Label Image with Text by website interface
 ```python
 python googledataannotator.py --mode web
 ```
-The terminal will output a url like `http://127.0.0.1:5000` copy it and append a seed number and a mode string like `http://127.0.0.1:5000/18/label`. It will access the images under the folder `googledata/seed18`. `label` means you can give the images with text answer label. The website will display the images like the following:
+The terminal will output a url like `http://127.0.0.1:5000` copy it and append a seed number like `http://127.0.0.1:5000/0`. It will access the images under the folder `textdata/traj0/metainfo.json`. Acoording to the placeid and panoid inside to load images under `googledata/place{PLACE_ID}`. The website will display the images like this. 
 
 ![website.png](docs/resources/website.png)
-![website2.png](docs/resources/website2.png)
 
-All text you input in the website will stored in `googledata/seed18/answer_user.txt`. Click the button `Submit and Continue`, the website will refresh, and the images of the next step will display on it. 
+All text you input in the website will stored in `textdata/traj0/answer_user.txt`. Click the button `Submit and Continue`, the website will refresh, and the images of the next step will display on it. 
 
 If you want to modify something in the website, you not only need to change the `googledataannotator.py`, but also `templates/index.html`. Because something are defined in it and need to be consistent with `googledataannotator.py`. 
 
-Then, enter the url `http://127.0.0.1:5000/18/convert` in your browser. This can convert the `googledata/seed{SEED}/answer_user.txt` to `googledata/seed{SEED}/answer.json` like the format in `docs/resources/answer_example.json`.
+Then, enter the url `http://127.0.0.1:5000/0/convert` in your browser. This can convert the `textdata/traj0/answer_user.txt` to `textdata/traj0/answer.json` like the format in `docs/resources/answer_example.json`.
 
-If you want to check the answer, `http://127.0.0.1:5000/18/view` in your browser. The website will display the images and answers like the following:
+If you want to check the answer, `http://127.0.0.1:5000/0/view` in your browser. The website will display the images and answers like the following:
 
 ![view_web.png](docs/resources/view_web.png)
+
+The final directory will like this: 
+```json
+└── textdata
+    ├── traj0
+        ├── metainfo.json
+        ├── route.html
+        ├── answer_user.txt
+        ├── answer.json
+    ├── traj1
+        ├── ...
+    ├── ...
+```

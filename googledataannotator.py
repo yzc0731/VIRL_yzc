@@ -8,52 +8,141 @@ import argparse
 
 app = Flask(__name__)
 
-BASE_FOLDER = 'googledata'
+TEXTDATA_FOLDER = 'textdata'
+GOOGLE_DATA_FOLDER = 'googledata'
 ACTION_CHOICES = ['forward', 'turn left', 'turn right', 'turn backward', 'stop']
+HEADING_ORDER = ['front', 'right', 'back', 'left']
+Bob_HEADING_ORDER_MAPPING = {
+    'front': 'back',
+    'right': 'left',
+    'back': 'front',
+    'left': 'right'
+}
 
 class GoogleDataAnnotator:
-    def __init__(self, base_folder, seed):
-        self.base_folder = base_folder
+    def __init__(self, textdata_folder, googledata_folder, seed):
+        self.textdata_folder = textdata_folder
+        self.googledata_folder = googledata_folder
         self.seed = seed
         self.camera_num = 4
-        self.folder = os.path.join(base_folder, f'seed{seed}')
-        if not os.path.exists(self.folder):
-            raise FileNotFoundError(f"Seed folder {self.folder} does not exist.")
-        self.image_filename_pattern = re.compile(r'streetview_(Alice|Bob)_(\d+)_([\w_]+)\.jpg')
-        self.heading_order = ['front', 'right', 'back', 'left']
+        # set the trajectory folder based on the seed
+        self.traj_folder = os.path.join(textdata_folder, f'traj{seed}')
+        
+        if not os.path.exists(self.traj_folder):
+            raise FileNotFoundError(f"Trajectory folder {self.traj_folder} does not exist.")
+        
+        # Load metainfo
+        self.metainfo = self.load_metainfo()
+
+        # set the place folder based on the metainfo
+        self.place_id = self.metainfo['place']
+        self.place_folder = os.path.join(googledata_folder, f'place{self.place_id}')
+
+    def load_metainfo(self):
+        """Load the metainfo.json file"""
+        metainfo_path = os.path.join(self.traj_folder, 'metainfo.json')
+        if not os.path.exists(metainfo_path):
+            raise FileNotFoundError(f"Metainfo file not found: {metainfo_path}")
+        
+        with open(metainfo_path, 'r', encoding='utf-8') as f:
+            metainfo = json.load(f)
+        
+        # Validate metainfo
+        assert 'place' in metainfo, "Place ID is missing in metainfo"
+        assert 'rendezvous point' in metainfo, "Rendezvous point pano ID is missing in metainfo"
+        assert 'Alice points' in metainfo, "Alice points are missing in metainfo"
+        assert 'Bob points' in metainfo, "Bob points are missing in metainfo"
+        assert len(metainfo['Alice points']) == len(metainfo['Bob points']), \
+            "Alice and Bob points lists must have the same length"
+        
+        return metainfo
 
     def sort_by_heading(self, images):
-        heading_order = {h: i for i, h in enumerate(self.heading_order)}
+        heading_order = {h: i for i, h in enumerate(HEADING_ORDER)}
         return sorted(images, key=lambda x: heading_order.get(x['heading'], 999))
 
-    def parse_image_info(self, full_path):
-        """Parse the image filename to extract agent, time, and heading"""
-        rel_path = os.path.relpath(full_path, self.base_folder)
-        basename = os.path.basename(full_path)
-        match = re.match(self.image_filename_pattern, basename)
-        if match:
-            return {
-                'agent': match.group(1),
-                'time': int(match.group(2)),
-                'heading': match.group(3),
-                'filename': rel_path.replace('\\', '/'),
-                'full_path': full_path
-            }
-        return None
+    def process_images(self):
+        """Load and process the images data based on metainfo"""
+        processed_groups = []
+        alice_points = self.metainfo['Alice points']
+        bob_points = self.metainfo['Bob points']
+        
+        for time_index in range(len(alice_points)):
+            alice_pano = alice_points[time_index]
+            bob_pano = bob_points[time_index]
+            
+            alice_images = []
+            bob_images = []
+            
+            for view_label in HEADING_ORDER:
+                # Process Alice image
+                alice_img_path = os.path.join(self.place_folder, f'id_{alice_pano}_{view_label}.jpg')
+                if os.path.exists(alice_img_path):
+                    alice_images.append({
+                        'agent': 'Alice',
+                        'time': time_index,
+                        'heading': view_label,
+                        'filename': os.path.join(f'place{self.place_id}', f'id_{alice_pano}_{view_label}.jpg').replace('\\', '/')
+                    })
+                
+                # Process Bob image (with direction mapping)
+                bob_view_label = Bob_HEADING_ORDER_MAPPING[view_label]
+                bob_img_path = os.path.join(self.place_folder, f'id_{bob_pano}_{bob_view_label}.jpg')
+                if os.path.exists(bob_img_path):
+                    bob_images.append({
+                        'agent': 'Bob',
+                        'time': time_index,
+                        'heading': view_label,  # Keep original label for display consistency
+                        'filename': os.path.join(f'place{self.place_id}', f'id_{bob_pano}_{bob_view_label}.jpg').replace('\\', '/')
+                    })
+            
+            # Sort and validate
+            alice_sorted = self.sort_by_heading(alice_images)
+            bob_sorted = self.sort_by_heading(bob_images)
+            processed_groups.append({
+                'time': time_index,
+                'alice': alice_sorted,
+                'bob': bob_sorted
+            })
+        
+        # add rendezvous point image to both alice and bob
+        rendezvous_pano = self.metainfo['rendezvous point']
+        time_index = len(alice_points)  # Add to the end of the list
+        rendezvous_image_list_for_alice = []
+        rendezvous_image_list_for_bob = []
+        for view_label in HEADING_ORDER:
+            rendezvous_img_path_for_alice = os.path.join(self.place_folder, f'id_{rendezvous_pano}_{view_label}.jpg')
+            if os.path.exists(rendezvous_img_path_for_alice):
+                rendezvous_image_for_alice = {
+                    'agent': 'Alice',
+                    'time': time_index, 
+                    'heading': view_label,
+                    'filename': os.path.join(f'place{self.place_id}', f'id_{rendezvous_pano}_{view_label}.jpg').replace('\\', '/')
+                }
+                rendezvous_image_list_for_alice.append(rendezvous_image_for_alice)
 
-    def load_images(self):
-        """Load images and group them by time"""
-        image_files = glob(os.path.join(self.folder, 'streetview_*.jpg'))
-        time_groups_images = defaultdict(list)
-        for img_path in image_files:
-            info = self.parse_image_info(img_path)
-            if info:
-                time_groups_images[info['time']].append(info)
-        return time_groups_images
+            bob_view_label = Bob_HEADING_ORDER_MAPPING[view_label]
+            rendezvous_img_path_for_bob = os.path.join(self.place_folder, f'id_{rendezvous_pano}_{bob_view_label}.jpg')
+            if os.path.exists(rendezvous_img_path_for_bob):
+                rendezvous_image_for_bob = {
+                    'agent': 'Bob',
+                    'time': time_index,
+                    'heading': view_label,
+                    'filename': os.path.join(f'place{self.place_id}', f'id_{rendezvous_pano}_{bob_view_label}.jpg').replace('\\', '/')
+                }
+                rendezvous_image_list_for_bob.append(rendezvous_image_for_bob)
+
+        processed_groups.append({
+            'time': time_index,
+            'alice': rendezvous_image_list_for_alice,
+            'bob': rendezvous_image_list_for_bob
+        })
+
+        return processed_groups
 
     def load_answers(self):
         """Load answers from the json file"""
-        answer_file = os.path.join(self.folder, 'answer.json')
+        answer_file = os.path.join(self.traj_folder, 'answer.json')
         if os.path.exists(answer_file):
             with open(answer_file, 'r') as f:
                 answers = json.load(f)
@@ -61,61 +150,30 @@ class GoogleDataAnnotator:
             answers = {}
         return answers
 
-    def process_images(self):
-        """Load and process the images data"""
-        time_groups_images = self.load_images()
-
-        # process each time group and sort images by agent and heading
-        processed_groups = []
-        for time, images in time_groups_images.items():
-            alice_images = [img for img in images if img['agent'] == 'Alice']
-            bob_images = [img for img in images if img['agent'] == 'Bob']
-            
-            alice_sorted = self.sort_by_heading(alice_images)
-            bob_sorted = self.sort_by_heading(bob_images)
-            
-            if len(alice_sorted) == self.camera_num and len(bob_sorted) == self.camera_num:
-                processed_groups.append({
-                    'time': time,
-                    'alice': alice_sorted,
-                    'bob': bob_sorted
-                })
-            else:
-                print(f"Warning: Time {time} has invalid image counts (Alice: {len(alice_sorted)}, Bob: {len(bob_sorted)})")
-        
-        return processed_groups
-
     def process_images_and_answers(self):
         """Load and process the images data and answers"""
-        time_groups_images = self.load_images()
+        image_groups = self.process_images()
         answers = self.load_answers()
 
-        # process each time group and sort images by agent and heading, and append answers
+        # Merge answers with image groups
         processed_groups = []
-        for time, images in time_groups_images.items():
-            alice_images = [img for img in images if img['agent'] == 'Alice']
-            bob_images = [img for img in images if img['agent'] == 'Bob']
+        for group in image_groups:
+            time_str = str(group['time'])
+            group_answers = answers.get(time_str, {
+                "Thought": {
+                    "Detection": "",
+                    "Orientation": {"Alice": "", "Bob": ""},
+                    "Conclusion": ""
+                },
+                "Answer": {"Alice": "", "Bob": ""}
+            })
             
-            alice_sorted = self.sort_by_heading(alice_images)
-            bob_sorted = self.sort_by_heading(bob_images)
-
-            if len(alice_sorted) == self.camera_num and len(bob_sorted) == self.camera_num:
-                time_str = str(time)
-                group_answers = answers.get(time_str, {
-                    "Thought": {
-                        "Detection": "",
-                        "Orientation": {"Alice": "", "Bob": ""},
-                        "Conclusion": ""
-                    },
-                    "Answer": {"Alice": "", "Bob": ""}
-                }) # Here is the default structure for answers if not found
-                
-                processed_groups.append({
-                    'time': time,
-                    'alice': alice_sorted,
-                    'bob': bob_sorted,
-                    'answers': group_answers
-                })
+            processed_groups.append({
+                'time': group['time'],
+                'alice': group['alice'],
+                'bob': group['bob'],
+                'answers': group_answers
+            })
         
         return processed_groups
 
@@ -168,21 +226,19 @@ class GoogleDataAnnotator:
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(final_result, f, indent=4, ensure_ascii=False)
 
-@app.route(f'/{BASE_FOLDER}/<path:filename>')
+@app.route(f'/{GOOGLE_DATA_FOLDER}/<path:filename>')
 def custom_static(filename):
     """Serve static files from the googledata folder"""
-    return send_from_directory(BASE_FOLDER, filename)
+    return send_from_directory(GOOGLE_DATA_FOLDER, filename)
 
 def handle_label(annotator):
     image_groups = annotator.process_images()
     if not image_groups:
-        return f"No valid image group found in the {BASE_FOLDER}/seed{annotator.seed}"
+        return f"No valid image group"
 
-    # Obtain the index of the currently processed group (either from the URL parameter or defaulted to 0)
     current_group_index = int(request.args.get('group', 0))
     
     if request.method == 'POST':
-        # Save user input
         data = {
             'time': request.form['time'],
             'landmark': request.form['landmark'],
@@ -193,7 +249,7 @@ def handle_label(annotator):
             'bob_action': request.form['bob_action']
         }
 
-        output_file = os.path.join(BASE_FOLDER, f'seed{annotator.seed}', 'answer_user.txt')
+        output_file = os.path.join(annotator.traj_folder, 'answer_user.txt')
 
         with open(output_file, 'a', encoding='utf-8') as f:
             f.write(f"{data['time']}|")
@@ -203,7 +259,7 @@ def handle_label(annotator):
             f.write(f"{data['conclusion']}|")
             f.write(f"Alice_action:{data['alice_action']}|")
             f.write(f"Bob_action:{data['bob_action']}\n")
-        # After processing the current group, check if there are any more groups
+        
         if current_group_index + 1 < len(image_groups):
             return redirect(url_for('handle_request', 
                                 seed=annotator.seed,
@@ -212,10 +268,10 @@ def handle_label(annotator):
         else:
             return "All image groups have been annotated!"
     
-    # Ensure the index is within a valid range
     current_group_index = min(current_group_index, len(image_groups) - 1)
     current_group = image_groups[current_group_index]
     
+    print(current_group_index, len(image_groups))
     return render_template('index.html',
                          alice_images=current_group['alice'],
                          bob_images=current_group['bob'],
@@ -226,15 +282,15 @@ def handle_label(annotator):
 
 def handle_convert(annotator):
     """Convert the answer_user.txt to answer.json"""
-    input_file = os.path.join(annotator.folder, 'answer_user.txt')
-    output_file = os.path.join(annotator.folder, 'answer.json')
+    input_file = os.path.join(annotator.traj_folder, 'answer_user.txt')
+    output_file = os.path.join(annotator.traj_folder, 'answer.json')
     annotator.txt_to_json(input_file, output_file)
     return f"Converted {input_file} to {output_file}"
 
 def handle_view(annotator):
     image_groups = annotator.process_images_and_answers()
     if not image_groups:
-        return f"No valid image group found in the {BASE_FOLDER}/seed{annotator.seed}"
+        return f"No valid image group found in {annotator.traj_folder}"
     
     current_group_index = int(request.args.get('group', 0))
     current_group_index = min(current_group_index, len(image_groups) - 1)
@@ -244,11 +300,10 @@ def handle_view(annotator):
     
     current_group = image_groups[current_group_index]
     
-    # Generate navigation links
     prev_group_url = url_for('handle_request', seed=annotator.seed, mode='view', group=current_group_index - 1) if current_group_index > 0 else None
     next_group_url = url_for('handle_request', seed=annotator.seed, mode='view', group=current_group_index + 1) if current_group_index < len(image_groups) - 1 else None
     
-    # Render the template with the current group data and navigation links
+    print(current_group_index, len(image_groups))
     return render_template('viewer.html',
                          alice_images=current_group['alice'],
                          bob_images=current_group['bob'],
@@ -261,7 +316,7 @@ def handle_view(annotator):
 
 @app.route('/<int:seed>/<string:mode>', methods=['GET', 'POST'])
 def handle_request(seed, mode):
-    annotator = GoogleDataAnnotator(BASE_FOLDER, seed)
+    annotator = GoogleDataAnnotator(TEXTDATA_FOLDER, GOOGLE_DATA_FOLDER, seed)
     if mode == 'label':
         return handle_label(annotator)
     elif mode == 'view':
@@ -273,13 +328,14 @@ def handle_request(seed, mode):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Google Data Annotator")
-    parser.add_argument("--seed", type=int, default=0, help="Random seed for data directory naming, only used in convert mode")
-    parser.add_argument("--mode", choices=['web', 'convert'], help="Mode of operation: website for web interface(it can do label, view, and convert), convert only for converting txt to json")
+    parser.add_argument("--seed", type=int, default=0, help="Trajectory seed number")
+    parser.add_argument("--mode", choices=['web', 'convert'], help="Mode of operation: web for web interface, convert only for converting txt to json")
     args = parser.parse_args()
+    
     if args.mode == 'convert':
-        input_file = os.path.join(BASE_FOLDER, f'seed{args.seed}', 'answer_user.txt')
-        output_file = os.path.join(BASE_FOLDER, f'seed{args.seed}', 'answer.json')
-        annotator = GoogleDataAnnotator(BASE_FOLDER, args.seed)
+        input_file = os.path.join(TEXTDATA_FOLDER, f'traj{args.seed}', 'answer_user.txt')
+        output_file = os.path.join(TEXTDATA_FOLDER, f'traj{args.seed}', 'answer.json')
+        annotator = GoogleDataAnnotator(TEXTDATA_FOLDER, GOOGLE_DATA_FOLDER, args.seed)
         annotator.txt_to_json(input_file, output_file)
         print(f"Converted {input_file} to {output_file}")
     else:
