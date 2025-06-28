@@ -7,6 +7,7 @@ from PIL import Image, ImageTk
 import json
 import argparse
 from typing import List, Dict
+from data_utils import get_panoids_from_json  # Assuming this function is defined in data_utils.py
 
 class BoundingBoxAnnotator:
     def __init__(self, seed: int):
@@ -21,7 +22,11 @@ class BoundingBoxAnnotator:
         self.placedata_dir = f"./googledata/place{seed}"
         if not os.path.exists(self.placedata_dir):
             raise FileNotFoundError(f"Data directory {self.placedata_dir} does not exist. Please run the data download script first.")
-        self.annotation_json_path = os.path.join(self.placedata_dir, f"annotations.json")
+        self.json_path = os.path.join(self.placedata_dir, "pano.json")        
+        # Get all available panoids
+        self.panoids = get_panoids_from_json(self.json_path)
+        print(f"Found {len(self.panoids)} panoids in {self.placedata_dir}.")
+        self.annotation_json_path = os.path.join(self.placedata_dir, "annotations.json")
         
         # Regular expression to extract image info
         self.image_pattern = re.compile(r"id_(.+?)_(front|right|left|back)\.jpg")
@@ -39,22 +44,8 @@ class BoundingBoxAnnotator:
         # Load existing annotations if any
         self.load_annotations()
         
-        # Get all available panoids
-        self.panoids = self.get_available_panoids()
-        print(f"Found {len(self.panoids)} panoids in {self.placedata_dir}.")
-        
         # Setup UI
         self.setup_ui()
-    
-    def get_available_panoids(self) -> List[str]:
-        """Get all available panoids from the pano.json"""
-        json_path = os.path.join(self.placedata_dir, "pano.json")
-        assert os.path.exists(json_path), f"pano.json not found in {self.placedata_dir}"
-        with open(json_path, 'r') as f:
-            data = json.load(f)
-        nodes = data.get("nodes", [])
-        panoids = list(nodes.keys())
-        return panoids
     
     def get_images_for_panoid(self, panoid: str) -> Dict[str, str]:
         """Get all images for a specific panoid"""
@@ -68,9 +59,9 @@ class BoundingBoxAnnotator:
         return images
 
     def get_image_key(self,
-        view: str,
-        panoid: str = None
-    ) -> str:
+            view: str,
+            panoid: str = None
+        ) -> str:
         """Generate a unique key for an image by panoid and view, this is the key for self.bboxes"""
         if panoid is None: return f"{self.current_panoid}_{view}"
         return f"{panoid}_{view}"

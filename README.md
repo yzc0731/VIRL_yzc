@@ -86,6 +86,8 @@ The `points.html` will display the positions of each point. When you click the d
 python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --function download
 ```
 
+Image will be saved as `id_{pano_id}_{front|right|back|left}.jpg` in `googledata/place{YOUR_DATA_SEED}`. 
+
 ### Step 3: Annotate Bounding Boxes
 
 To annotate objects in Street View images with bounding boxes:
@@ -127,7 +129,8 @@ Annotations are saved in JSON format at `googledata/place{YOUR_DATA_SEED}/annota
       "x2": 0.7859375,
       "y2": 0.8703125,
       "description": "33333"
-    }
+    },
+    ···
   ]
 }
 ```
@@ -141,7 +144,7 @@ After this, the structure of the directory will be like the following:
         ├── url.txt
         ├── pano.json
         ├── points.html
-        ├── id_{panoid}_{Camera_label}.jpg
+        ├── id_{panoid}_{camera_label}.jpg
         ├── annotations.json
     ├── place1
         ├── ...
@@ -151,17 +154,17 @@ After this, the structure of the directory will be like the following:
 ### Step4: Sample a Trajectory from a Place
 
 ```
-python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --function write --traj-id TRAJ_ID --stride STRIDE --renderzvous_point_pano_id ID
+python googledataprocess.py --api-key YOUR_API_KEY --seed PLACE_ID --function write --traj-id TRAJ_ID --stride STRIDE --pano-id ID
 ```
 
-This command will use location in `place{PLACE_ID}` to form a trajectory in `traj{TRAJ_ID}`. The `stride` control the sample density. The `renderzvous_point_pano_id` can be None. If none, it will automatically choose the one in the middle. The results will be save in the `metainfo.json` and `route.html` under the directory `textdata/traj{TRAJ_ID}/`. 
+This command will use location in `place{PLACE_ID}` to form a trajectory in `traj{TRAJ_ID}`. The `stride` control the sample density. The `pano-id` means rendezvous_point_pano_id. It can be None. If none, it will automatically choose the one in the middle. The results will be save in the `metainfo.json` and `route.html` under the directory `textdata/traj{TRAJ_ID}/`. 
 
 The `metainfo.json` may look like this
 ```json
 {
     "place": 0,
     "stride": 2,
-    "renderzvous point": "cOOc3ZlgtdgALMyKuSr7gg",
+    "rendezvous point": "cOOc3ZlgtdgALMyKuSr7gg",
     "Alice points": [
         "ouAP9cMbZxj6zs1epXfEbA",
         "98xr22ZodDaNvQOMfZSokQ",
