@@ -6,7 +6,7 @@ from tkinter import ttk, messagebox, simpledialog
 from PIL import Image, ImageTk
 import json
 import argparse
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from data_utils import get_panoids_from_json  # Assuming this function is defined in data_utils.py
 
 class BoundingBoxAnnotator:
@@ -15,7 +15,6 @@ class BoundingBoxAnnotator:
         Initialize the Bounding Box Annotator
         
         Args:
-            data_dir: Base directory where Google Street View data is stored
             seed: Seed number to identify which dataset to use
         """
         self.seed = seed
@@ -40,6 +39,8 @@ class BoundingBoxAnnotator:
         self.start_y = None
         self.current_rect = None
         self.bboxes = {}  # Store all annotations
+        self.mode = "single"  # Default mode: single or paired
+        self.pair_index = 0  # Index for paired mode
         
         # Load existing annotations if any
         self.load_annotations()
@@ -58,10 +59,7 @@ class BoundingBoxAnnotator:
                 print(f"Warning: Image {image_file} does not exist.")
         return images
 
-    def get_image_key(self,
-            view: str,
-            panoid: str = None
-        ) -> str:
+    def get_image_key(self, view: str, panoid: str = None) -> str:
         """Generate a unique key for an image by panoid and view, this is the key for self.bboxes"""
         if panoid is None: return f"{self.current_panoid}_{view}"
         return f"{panoid}_{view}"
@@ -77,9 +75,7 @@ class BoundingBoxAnnotator:
             print("No existing annotations found, starting fresh.")
 
     def save_annotations(self):
-        """Save all annotations to file
-        Because old annotations are loaded when initalizing and will not be deleted, old annotations and new annotations are merged in writing mode
-        """
+        """Save all annotations to file"""
         with open(self.annotation_json_path, 'w') as f:
             json.dump(self.bboxes, f, indent=2)
         print(f"Saved annotations to {self.annotation_json_path}")
@@ -91,13 +87,16 @@ class BoundingBoxAnnotator:
             messagebox.showwarning("Warning", "No image selected.")
             return
         
-        image_key = self.get_image_key(view=self.current_view)
+        image_key = self.get_image_key(view=self.current_view, panoid=self.current_panoid)
         if image_key in self.bboxes:
             if messagebox.askyesno("Confirm", f"Clear all annotations for Panoid {self.current_panoid}'s {self.current_view} view?"):
                 del self.bboxes[image_key]
                 # Refresh display
-                self.select_image(self.current_view, self.current_image_path)
-                self.load_panoid_images()
+                self.select_image(self.current_panoid, self.current_view, self.current_image_path)
+                if self.mode == "single":
+                    self.load_panoid_images()
+                else:
+                    self.load_paired_images()
                 self.status_var.set(f"Cleared annotations for Panoid {self.current_panoid}'s {self.current_view} view.")
         else:
             messagebox.showinfo("Info", "No annotations to clear.")
@@ -111,7 +110,7 @@ class BoundingBoxAnnotator:
         # Create a new toplevel window
         preview_window = tk.Toplevel(self.root)
         preview_window.title(f"Bounding Boxes Preview - {image_key}")
-        preview_window.geometry("640x640")
+        preview_window.geometry("640x480")
         
         # Create a frame with scrollbar
         frame = ttk.Frame(preview_window)
@@ -152,21 +151,30 @@ class BoundingBoxAnnotator:
         
         # Add button to highlight a box when selected
         def highlight_selected_box():
-            selected_item = tree.selection()[0]
+            selected_items = tree.selection()
+            if not selected_items:
+                return
+                
+            selected_item = selected_items[0]
             box_idx = int(tree.item(selected_item)["values"][0].split()[-1]) - 1
             
+            # Get the canvas to highlight on
+            canvas = self.canvas
+            img_width = self.img_width
+            img_height = self.img_height
+            
             # Clear previous highlights
-            self.canvas.delete("highlight")
+            canvas.delete("highlight")
             
             # Get box coordinates
             box = self.bboxes[image_key][box_idx]
-            x1 = box['x1'] * self.img_width
-            y1 = box['y1'] * self.img_height
-            x2 = box['x2'] * self.img_width
-            y2 = box['y2'] * self.img_height
+            x1 = box['x1'] * img_width
+            y1 = box['y1'] * img_height
+            x2 = box['x2'] * img_width
+            y2 = box['y2'] * img_height
             
             # Create highlighted rectangle
-            self.canvas.create_rectangle(
+            canvas.create_rectangle(
                 x1, y1, x2, y2, 
                 outline="yellow", 
                 width=3, 
@@ -174,7 +182,7 @@ class BoundingBoxAnnotator:
             )
             
             # Ensure the highlighted box is visible
-            self.canvas.update()
+            canvas.update()
         
         # Add button to highlight the selected box
         highlight_btn = ttk.Button(
@@ -196,49 +204,107 @@ class BoundingBoxAnnotator:
         """Set up the user interface"""
         self.root = tk.Tk()
         self.root.title(f"Bounding Box Annotator - Seed {self.seed}")
-        self.root.geometry("1200x800")
+        self.root.geometry("1400x800")
         
         # Create frames
         self.control_frame = ttk.Frame(self.root, padding=10)
         self.control_frame.pack(side=tk.TOP, fill=tk.X)
         
+        # Mode selection radio buttons
+        mode_frame = ttk.LabelFrame(self.control_frame, text="Mode")
+        mode_frame.grid(row=0, column=0, padx=10, pady=5, sticky=tk.W)
+        
+        self.mode_var = tk.StringVar(value="single")
+        ttk.Radiobutton(mode_frame, text="Single Location", variable=self.mode_var, value="single", 
+                        command=self.on_mode_change).grid(row=0, column=0, padx=5, pady=2)
+        ttk.Radiobutton(mode_frame, text="Paired Locations", variable=self.mode_var, value="paired", 
+                        command=self.on_mode_change).grid(row=0, column=1, padx=5, pady=2)
+        
+        # Controls for single mode
+        self.single_controls = ttk.Frame(self.control_frame)
+        self.single_controls.grid(row=0, column=1, padx=10, pady=5, sticky=tk.W)
+        
+        ttk.Label(self.single_controls, text="Panoid:").grid(row=0, column=0, padx=5, pady=5)
+        
+        self.panoid_var = tk.StringVar()
+        self.panoid_combo = ttk.Combobox(self.single_controls, textvariable=self.panoid_var, 
+                                         width=30, values=[str(p) for p in self.panoids])
+        self.panoid_combo.grid(row=0, column=1, padx=5, pady=5)
+        if self.panoids:
+            self.panoid_combo.current(0)
+        
+        ttk.Button(self.single_controls, text="Load Images", 
+                  command=self.load_panoid_images).grid(row=0, column=2, padx=5, pady=5)
+        
+        # Controls for paired mode
+        self.paired_controls = ttk.Frame(self.control_frame)
+        self.paired_controls.grid(row=0, column=1, padx=10, pady=5, sticky=tk.W)
+        self.paired_controls.grid_remove()  # Hide initially
+        
+        ttk.Label(self.paired_controls, text="Pair:").grid(row=0, column=0, padx=5, pady=5)
+        
+        self.pair_var = tk.StringVar()
+        max_pair = max(0, len(self.panoids) // 2 - 1)
+        self.pair_spinner = ttk.Spinbox(self.paired_controls, from_=0, to=max_pair, 
+                                       textvariable=self.pair_var, width=5, wrap=True)
+        self.pair_spinner.grid(row=0, column=1, padx=5, pady=5)
+        self.pair_var.set("0")
+        
+        ttk.Button(self.paired_controls, text="Previous Pair", 
+                  command=self.prev_pair).grid(row=0, column=2, padx=5, pady=5)
+        ttk.Button(self.paired_controls, text="Next Pair", 
+                  command=self.next_pair).grid(row=0, column=3, padx=5, pady=5)
+        ttk.Button(self.paired_controls, text="Load Pair", 
+                  command=self.load_paired_images).grid(row=0, column=4, padx=5, pady=5)
+        
+        # Common controls
+        ttk.Button(self.control_frame, text="Save Annotations", 
+                  command=self.save_annotations).grid(row=0, column=2, padx=5, pady=5)
+        ttk.Button(self.control_frame, text="Clear Current", 
+                  command=self.clear_current_annotations).grid(row=0, column=3, padx=5, pady=5)
+        
+        # Preview button will be added dynamically when an image is selected
+        
+        # Status bar
+        self.status_var = tk.StringVar()
+        self.status_var.set("Select mode and load images")
+        ttk.Label(self.control_frame, textvariable=self.status_var, relief=tk.SUNKEN, 
+                 anchor=tk.W).grid(row=1, column=0, columnspan=6, sticky=tk.W+tk.E, padx=5, pady=5)
+        
+        # Image display area
         self.image_frame = ttk.Frame(self.root)
         self.image_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         
-        self.canvas = tk.Canvas(self.image_frame, bg="gray")
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # Left side for main image
+        self.left_frame = ttk.LabelFrame(self.image_frame, text="Main Image")
+        self.left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.canvas = tk.Canvas(self.left_frame, bg="gray")
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # Right side for thumbnails
+        self.right_frame = ttk.Frame(self.image_frame)
+        self.right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Thumbnail area
+        self.thumbnail_area = ttk.LabelFrame(self.right_frame, text="Thumbnails")
+        self.thumbnail_area.pack(fill=tk.BOTH, expand=True)
         
         # Scrollbar for the thumbnails
-        self.scrollbar = ttk.Scrollbar(self.image_frame, orient=tk.VERTICAL)
+        self.scrollbar = ttk.Scrollbar(self.thumbnail_area, orient=tk.VERTICAL)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        self.thumbnail_canvas = tk.Canvas(self.image_frame, width=200, yscrollcommand=self.scrollbar.set)
-        self.thumbnail_canvas.pack(side=tk.RIGHT, fill=tk.Y)
+        self.thumbnail_canvas = tk.Canvas(self.thumbnail_area, width=200, yscrollcommand=self.scrollbar.set)
+        self.thumbnail_canvas.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         self.scrollbar.config(command=self.thumbnail_canvas.yview)
         
         # Thumbnail frame inside canvas
         self.thumbnail_frame = ttk.Frame(self.thumbnail_canvas)
         self.thumbnail_canvas.create_window((0, 0), window=self.thumbnail_frame, anchor=tk.NW)
         
-        # Controls
-        ttk.Label(self.control_frame, text="Panoid:").grid(row=0, column=0, padx=5, pady=5)
-        
-        self.panoid_var = tk.StringVar()
-        self.panoid_combo = ttk.Combobox(self.control_frame, textvariable=self.panoid_var, 
-                                        values=[str(p) for p in self.panoids])  # 使用 self.panoids
-        self.panoid_combo.grid(row=0, column=1, padx=5, pady=5)
-        if self.panoids:
-            self.panoid_combo.current(0)
-        
-        ttk.Button(self.control_frame, text="Load Images", command=self.load_panoid_images).grid(row=0, column=2, padx=5, pady=5)
-        ttk.Button(self.control_frame, text="Save Annotations", command=self.save_annotations).grid(row=0, column=3, padx=5, pady=5)
-        ttk.Button(self.control_frame, text="Clear Current", command=self.clear_current_annotations).grid(row=0, column=4, padx=5, pady=5)
-        
-        # Status bar
-        self.status_var = tk.StringVar()
-        self.status_var.set("Select a panoid and click 'Load Images'")
-        ttk.Label(self.control_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W).grid(row=1, column=0, columnspan=6, sticky=tk.W+tk.E, padx=5, pady=5)
-        
+        self.thumbnail_canvas.bind("<MouseWheel>", self.on_mousewheel) 
+        self.thumbnail_canvas.bind("<Button-4>", self.on_mousewheel)  
+        self.thumbnail_canvas.bind("<Button-5>", self.on_mousewheel)
         # Canvas event bindings
         self.canvas.bind("<ButtonPress-1>", self.on_press)
         self.canvas.bind("<B1-Motion>", self.on_drag)
@@ -249,6 +315,181 @@ class BoundingBoxAnnotator:
         
         # Main loop
         self.root.mainloop()
+    
+    def on_mousewheel(self, event):
+        """Handle mouse wheel event for scrolling the thumbnail area"""
+        if event.num == 4 or (hasattr(event, 'delta') and event.delta > 0):
+            self.thumbnail_canvas.yview_scroll(-1, "units")
+        elif event.num == 5 or (hasattr(event, 'delta') and event.delta < 0):
+            self.thumbnail_canvas.yview_scroll(1, "units")
+        
+        return "break"
+
+    def on_mode_change(self):
+        """Handle mode change between single and paired"""
+        new_mode = self.mode_var.get()
+        if new_mode == self.mode:
+            return
+            
+        self.mode = new_mode
+        
+        if self.mode == "single":
+            # Switch to single mode
+            self.single_controls.grid()
+            self.paired_controls.grid_remove()
+            self.left_frame.configure(text="Main Image")
+            self.status_var.set("Single Location Mode: Select a panoid and click 'Load Images'")
+        else:
+            # Switch to paired mode
+            self.single_controls.grid_remove()
+            self.paired_controls.grid()
+            self.left_frame.configure(text="Selected Image")
+            self.status_var.set("Paired Locations Mode: Select a pair index and click 'Load Pair'")
+            
+        # Clear current display
+        self.canvas.delete("all")
+        for widget in self.thumbnail_frame.winfo_children():
+            widget.destroy()
+    
+    def prev_pair(self):
+        """Navigate to previous pair"""
+        max_pair = max(0, len(self.panoids) // 2 - 1)
+        current = int(self.pair_var.get())
+        new_pair = max(0, current - 1)
+        self.pair_var.set(str(new_pair))
+        self.load_paired_images()
+    
+    def next_pair(self):
+        """Navigate to next pair"""
+        max_pair = max(0, len(self.panoids) // 2 - 1)
+        current = int(self.pair_var.get())
+        new_pair = min(max_pair, current + 1)
+        self.pair_var.set(str(new_pair))
+        self.load_paired_images()
+    
+    def load_paired_images(self):
+        """Load paired locations for thumbnail display, but still annotate one image at a time"""
+        try:
+            pair_idx = int(self.pair_var.get())
+            if pair_idx < 0 or pair_idx >= len(self.panoids) // 2:
+                messagebox.showwarning("Warning", f"Invalid pair index. Must be between 0 and {len(self.panoids) // 2 - 1}.")
+                return
+                
+            # First location (from start of list)
+            first_panoid = self.panoids[pair_idx]
+            # Second location (from end of list)
+            second_panoid = self.panoids[-(pair_idx + 1)]
+            
+            self.status_var.set(f"Loaded pair {pair_idx}: {first_panoid} and {second_panoid}")
+            
+            # Get images for both panoids
+            first_images = self.get_images_for_panoid(first_panoid)
+            second_images = self.get_images_for_panoid(second_panoid)
+            
+            if not first_images or not second_images:
+                messagebox.showwarning("Warning", "Could not find images for the selected pair.")
+                return
+            
+            # Clear current display
+            self.canvas.delete("all")
+            
+            # Clear previous thumbnails
+            for widget in self.thumbnail_frame.winfo_children():
+                widget.destroy()
+            
+            # Display thumbnails for both locations
+            self.display_paired_thumbnails(first_panoid, first_images, second_panoid, second_images)
+            
+        except ValueError:
+            messagebox.showerror("Error", "Invalid pair index. Please enter a number.")
+    
+    def display_paired_thumbnails(self, first_panoid, first_images, second_panoid, second_images):
+        """Display thumbnails for both locations in the paired mode"""
+        row = 0
+        
+        # First location thumbnails
+        ttk.Label(self.thumbnail_frame, text=f"Location 1: Panoid {first_panoid}", 
+                  font=("Arial", 12, "bold")).grid(row=row, column=0, pady=10)
+        row += 1
+        
+        for view, image_path in first_images.items():
+            # Create a frame for this thumbnail
+            thumb_frame = ttk.Frame(self.thumbnail_frame)
+            thumb_frame.grid(row=row, column=0, pady=5, padx=5, sticky=tk.W)
+            
+            # Load and resize the image for thumbnail
+            img = Image.open(image_path)
+            img.thumbnail((180, 180))
+            photo = ImageTk.PhotoImage(img)
+            
+            # Store reference to prevent garbage collection
+            thumb_frame.photo = photo
+            
+            # Create thumbnail with label
+            thumb_label = ttk.Label(thumb_frame, image=photo)
+            thumb_label.grid(row=0, column=0)
+            ttk.Label(thumb_frame, text=view).grid(row=1, column=0)
+            
+            # Add click handler
+            thumb_label.bind("<Button-1>", lambda e, p=first_panoid, v=view, path=image_path: 
+                             self.select_image(p, v, path))
+            
+            # Mark if already annotated
+            image_key = self.get_image_key(view=view, panoid=first_panoid)
+            if image_key in self.bboxes and self.bboxes[image_key]:
+                annotated_label = ttk.Label(thumb_frame, text="✓", foreground="green", font=("Arial", 16))
+                annotated_label.grid(row=0, column=1)
+            
+            row += 1
+        
+        # Separator between locations
+        ttk.Separator(self.thumbnail_frame, orient='horizontal').grid(
+            row=row, column=0, sticky='ew', pady=10)
+        row += 1
+        
+        # Second location thumbnails
+        ttk.Label(self.thumbnail_frame, text=f"Location 2: Panoid {second_panoid}", 
+                  font=("Arial", 12, "bold")).grid(row=row, column=0, pady=10)
+        row += 1
+        
+        for view, image_path in second_images.items():
+            # Create a frame for this thumbnail
+            thumb_frame = ttk.Frame(self.thumbnail_frame)
+            thumb_frame.grid(row=row, column=0, pady=5, padx=5, sticky=tk.W)
+            
+            # Load and resize the image for thumbnail
+            img = Image.open(image_path)
+            img.thumbnail((180, 180))
+            photo = ImageTk.PhotoImage(img)
+            
+            # Store reference to prevent garbage collection
+            thumb_frame.photo = photo
+            
+            # Create thumbnail with label
+            thumb_label = ttk.Label(thumb_frame, image=photo)
+            thumb_label.grid(row=0, column=0)
+            ttk.Label(thumb_frame, text=view).grid(row=1, column=0)
+            
+            # Add click handler
+            thumb_label.bind("<Button-1>", lambda e, p=second_panoid, v=view, path=image_path: 
+                             self.select_image(p, v, path))
+            
+            # Mark if already annotated
+            image_key = self.get_image_key(view=view, panoid=second_panoid)
+            if image_key in self.bboxes and self.bboxes[image_key]:
+                annotated_label = ttk.Label(thumb_frame, text="✓", foreground="green", font=("Arial", 16))
+                annotated_label.grid(row=0, column=1)
+            
+            row += 1
+        
+        # Update the scroll region
+        self.thumbnail_canvas.update_idletasks()
+        self.thumbnail_canvas.configure(scrollregion=self.thumbnail_canvas.bbox("all"))
+        
+        for child in self.thumbnail_frame.winfo_children():
+            child.bind("<MouseWheel>", self.on_mousewheel)
+            child.bind("<Button-4>", self.on_mousewheel)
+            child.bind("<Button-5>", self.on_mousewheel)
     
     def on_thumbnail_frame_configure(self, event):
         """Update the scroll region when the thumbnail frame changes size"""
@@ -261,13 +502,13 @@ class BoundingBoxAnnotator:
             return
         
         try:
-            self.current_panoid = self.panoid_var.get()  # 获取当前选择的 panoid
+            self.current_panoid = self.panoid_var.get()
 
             # Clear previous thumbnails
             for widget in self.thumbnail_frame.winfo_children():
                 widget.destroy()
             
-            # Get images for this timestep
+            # Get images for this panoid
             images = self.get_images_for_panoid(self.current_panoid)
 
             row = 0
@@ -293,10 +534,11 @@ class BoundingBoxAnnotator:
                 ttk.Label(thumb_frame, text=view).grid(row=1, column=0)
                 
                 # Add click handler
-                thumb_label.bind("<Button-1>", lambda e, v=view, p=image_path: self.select_image(v, p))
+                thumb_label.bind("<Button-1>", lambda e, p=self.current_panoid, v=view, path=image_path: 
+                                 self.select_image(p, v, path))
                 
                 # Mark if already annotated
-                image_key = self.get_image_key(view=view)
+                image_key = self.get_image_key(view=view, panoid=self.current_panoid)
                 if image_key in self.bboxes and self.bboxes[image_key]:
                     annotated_label = ttk.Label(thumb_frame, text="✓", foreground="green", font=("Arial", 16))
                     annotated_label.grid(row=0, column=1)
@@ -308,12 +550,18 @@ class BoundingBoxAnnotator:
             # Update the scroll region
             self.thumbnail_canvas.update_idletasks()
             self.thumbnail_canvas.configure(scrollregion=self.thumbnail_canvas.bbox("all"))
+
+            for child in self.thumbnail_frame.winfo_children():
+                child.bind("<MouseWheel>", self.on_mousewheel)
+                child.bind("<Button-4>", self.on_mousewheel)
+                child.bind("<Button-5>", self.on_mousewheel)
         
         except Exception as e:
             messagebox.showerror("Error", f"Invalid panoid: {e}")
 
-    def select_image(self, view: str, image_path: str):
-        """Handle selection of an image for annotation"""
+    def select_image(self, panoid, view, image_path):
+        """Handle selection of an image for annotation (works in both modes)"""
+        self.current_panoid = panoid
         self.current_view = view
         self.current_image_path = image_path
         
@@ -331,7 +579,7 @@ class BoundingBoxAnnotator:
         self.img_height = img.height
         
         # Display any existing bounding boxes
-        image_key = self.get_image_key(view=view)
+        image_key = self.get_image_key(view=view, panoid=panoid)
         if image_key in self.bboxes:
             for box in self.bboxes[image_key]:
                 x1 = box['x1'] * self.img_width
@@ -353,9 +601,9 @@ class BoundingBoxAnnotator:
             text="Preview Boxes", 
             command=lambda: self.preview_boxes(image_key)
         )
-        self.preview_btn.grid(row=0, column=5, padx=5, pady=5)
+        self.preview_btn.grid(row=0, column=4, padx=5, pady=5)
 
-        self.status_var.set(f"Annotating: Panoid {self.current_panoid}'s {view} view. Click and drag to create bounding box.")
+        self.status_var.set(f"Annotating: Panoid {panoid}'s {view} view. Click and drag to create bounding box.")
     
     # Mouse event handlers
     def on_press(self, event):
@@ -414,7 +662,7 @@ class BoundingBoxAnnotator:
         description = simpledialog.askstring("Object Description", "Enter object description (optional):", parent=self.root)
         
         # Store the bounding box
-        image_key = self.get_image_key(view=self.current_view)
+        image_key = self.get_image_key(view=self.current_view, panoid=self.current_panoid)
         if image_key not in self.bboxes:
             self.bboxes[image_key] = []
         
@@ -438,7 +686,10 @@ class BoundingBoxAnnotator:
         self.status_var.set(f"Annotated {self.current_panoid}'s {self.current_view} view with a new bounding box.")
         
         # Also update the thumbnail view to show the annotated checkmark
-        self.load_panoid_images()
+        if self.mode == "single":
+            self.load_panoid_images()
+        else:
+            self.load_paired_images()
 
 def main():
     parser = argparse.ArgumentParser(description="Bounding Box Annotation Tool for Street View Images")
