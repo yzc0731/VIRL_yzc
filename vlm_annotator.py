@@ -28,7 +28,7 @@ class VLMAnnotator:
     An automated annotator that uses Vision-Language Models to generate 
     annotations for multiagent rendezvous data.
     """
-    def __init__(self, textdata_folder, googledata_folder, seed, api_key, model="gpt-4o-mini", overwrite=False):
+    def __init__(self, textdata_folder, googledata_folder, seed, api_key, model="gpt-4o-mini", overwrite=False, visualize=True):
         """
         Initialize the VLM Annotator.
         
@@ -39,6 +39,7 @@ class VLMAnnotator:
             api_key: API key for the VLM service
             model: VLM model to use for annotation
             overwrite: Whether to overwrite existing annotations
+            visualize: Whether to generate visualization images
         """
         self.textdata_folder = textdata_folder
         self.googledata_folder = googledata_folder
@@ -46,6 +47,7 @@ class VLMAnnotator:
         self.api_key = api_key
         self.model = model
         self.overwrite = overwrite
+        self.visualize = visualize
         self.camera_num = len(HEADING_ORDER)
         
         # Set the trajectory folder based on the seed
@@ -516,19 +518,20 @@ IMPORTANT: Output ONLY valid JSON with no additional text before or after.
             if not self.overwrite and time_idx in annotations:
                 print(f"Skipping group {time_idx+1}/{len(image_groups)} (already annotated)")
                 
-                # If we have the annotation but no visualization, create it
-                vis_path = os.path.join(self.output_folder, f'annotation_{time_idx}.png')
-                if not os.path.exists(vis_path):
-                    # Get image paths for visualization
-                    all_images = group['alice'] + group['bob']
-                    image_paths = [img['filename'] for img in all_images]
-                    route_image_path = self._get_route_image_path(time_idx)
-                    if route_image_path:
-                        image_paths.append(route_image_path)
-                    
-                    # Create visualization for existing annotation
-                    self.visualize_annotation(image_paths, annotations[time_idx], vis_path)
-                    print(f"Created visualization for existing annotation at {vis_path}")
+                # If visualization is enabled and we have the annotation but no visualization, create it
+                if self.visualize:
+                    vis_path = os.path.join(self.output_folder, f'annotation_{time_idx}.png')
+                    if not os.path.exists(vis_path):
+                        # Get image paths for visualization
+                        all_images = group['alice'] + group['bob']
+                        image_paths = [img['filename'] for img in all_images]
+                        route_image_path = self._get_route_image_path(time_idx)
+                        if route_image_path:
+                            image_paths.append(route_image_path)
+                        
+                        # Create visualization for existing annotation
+                        self.visualize_annotation(image_paths, annotations[time_idx], vis_path)
+                        print(f"Created visualization for existing annotation at {vis_path}")
                 
                 continue
                 
@@ -558,10 +561,11 @@ IMPORTANT: Output ONLY valid JSON with no additional text before or after.
             if annotation:
                 annotations[time_idx] = annotation
                 
-                # Visualize annotation
-                vis_path = os.path.join(self.output_folder, f'annotation_{time_idx}.png')
-                self.visualize_annotation(image_paths, annotation, vis_path)
-                print(f"Saved visualization to {vis_path}")
+                # Visualize annotation if enabled
+                if self.visualize:
+                    vis_path = os.path.join(self.output_folder, f'annotation_{time_idx}.png')
+                    self.visualize_annotation(image_paths, annotation, vis_path)
+                    print(f"Saved visualization to {vis_path}")
             else:
                 print(f"Failed to get annotation for group {time_idx}")
         
@@ -580,10 +584,15 @@ IMPORTANT: Output ONLY valid JSON with no additional text before or after.
         # Convert to required format
         answer_format = self.convert_to_answer_format(annotations)
         
+        # Sort the keys numerically to ensure sequential order from 0
+        sorted_answer = {}
+        for key in sorted(answer_format.keys(), key=lambda x: int(x)):
+            sorted_answer[key] = answer_format[key]
+        
         # Save to file
         output_path = os.path.join(self.traj_folder, 'answer.json')
         with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(answer_format, f, indent=4, ensure_ascii=False)
+            json.dump(sorted_answer, f, indent=4, ensure_ascii=False)
             
         print(f"Saved annotations to {output_path}")
         return output_path
@@ -596,6 +605,7 @@ def main():
     parser.add_argument("--api_key", type=str, required=True, help="API key for the VLM service")
     parser.add_argument("--model", type=str, default="gpt-4o-mini", help="VLM model to use")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing annotations")
+    parser.add_argument("--no-visualize", action="store_true", help="Skip generating visualization images")
     args = parser.parse_args()
     
     annotator = VLMAnnotator(
@@ -604,7 +614,8 @@ def main():
         seed=args.seed,
         api_key=args.api_key,
         model=args.model,
-        overwrite=args.overwrite
+        overwrite=args.overwrite,
+        visualize=not args.no_visualize
     )
     
     annotations = annotator.run_annotation()
