@@ -1,9 +1,8 @@
 from flask import Flask, render_template, request, redirect, url_for, send_from_directory
 import os
 import json
-from glob import glob
 import re
-from collections import defaultdict
+from typing import List, Tuple, Dict
 import argparse
 
 app = Flask(__name__)
@@ -24,7 +23,7 @@ class GoogleDataAnnotator:
         self.textdata_folder = textdata_folder
         self.googledata_folder = googledata_folder
         self.seed = seed
-        self.camera_num = 4
+        self.camera_num = len(HEADING_ORDER)
         # set the trajectory folder based on the seed
         self.traj_folder = os.path.join(textdata_folder, f'traj{seed}')
         
@@ -61,86 +60,68 @@ class GoogleDataAnnotator:
         heading_order = {h: i for i, h in enumerate(HEADING_ORDER)}
         return sorted(images, key=lambda x: heading_order.get(x['heading'], 999))
 
-    def process_images(self):
-        """Load and process the images data based on metainfo"""
+    def _process_agent_images(self, 
+            pano_id: int,
+            agent_name: str
+        ) -> List[Dict]:
+        """Process images for a single agent at a given time (internal helper method)
+        
+        Args:
+            pano_id: Panorama ID to process
+            time_idx: Time index for the images
+            agent_name: 'Alice' or 'Bob'
+        
+        Returns:
+            List of processed and sorted image entries
+        """
+        is_bob = agent_name == 'Bob'
+        images = []
+        
+        for view_label in HEADING_ORDER:
+            # Create image entry
+            actual_view = Bob_HEADING_ORDER_MAPPING[view_label] if is_bob else view_label
+            img_path = os.path.join(self.place_folder, f'id_{pano_id}_{actual_view}.jpg')
+            
+            if os.path.exists(img_path):
+                images.append({
+                    'heading': view_label,  # Keep original label for display consistency
+                    'filename': os.path.join(f'place{self.place_id}', f'id_{pano_id}_{actual_view}.jpg').replace('\\', '/')
+                })
+        
+        return self.sort_by_heading(images)
+
+    def process_images(self) -> List[Dict]:
+        """Load and process the images data based on metainfo
+        
+        Returns:
+            List of processed image groups, each containing Alice's and Bob's images
+            for a specific time point
+        """
         processed_groups = []
         alice_points = self.metainfo['Alice points']
         bob_points = self.metainfo['Bob points']
         
-        for time_index in range(len(alice_points)):
-            alice_pano = alice_points[time_index]
-            bob_pano = bob_points[time_index]
-            
-            alice_images = []
-            bob_images = []
-            
-            for view_label in HEADING_ORDER:
-                # Process Alice image
-                alice_img_path = os.path.join(self.place_folder, f'id_{alice_pano}_{view_label}.jpg')
-                if os.path.exists(alice_img_path):
-                    alice_images.append({
-                        'agent': 'Alice',
-                        'time': time_index,
-                        'heading': view_label,
-                        'filename': os.path.join(f'place{self.place_id}', f'id_{alice_pano}_{view_label}.jpg').replace('\\', '/')
-                    })
-                
-                # Process Bob image (with direction mapping)
-                bob_view_label = Bob_HEADING_ORDER_MAPPING[view_label]
-                bob_img_path = os.path.join(self.place_folder, f'id_{bob_pano}_{bob_view_label}.jpg')
-                if os.path.exists(bob_img_path):
-                    bob_images.append({
-                        'agent': 'Bob',
-                        'time': time_index,
-                        'heading': view_label,  # Keep original label for display consistency
-                        'filename': os.path.join(f'place{self.place_id}', f'id_{bob_pano}_{bob_view_label}.jpg').replace('\\', '/')
-                    })
-            
-            # Sort and validate
-            alice_sorted = self.sort_by_heading(alice_images)
-            bob_sorted = self.sort_by_heading(bob_images)
+        # Process regular time points
+        for time_idx, (alice_pano, bob_pano) in enumerate(zip(alice_points, bob_points)):
             processed_groups.append({
-                'time': time_index,
-                'alice': alice_sorted,
-                'bob': bob_sorted
+                'time': time_idx,
+                'alice': self._process_agent_images(alice_pano, 'Alice'),
+                'bob': self._process_agent_images(bob_pano, 'Bob')
             })
         
-        # add rendezvous point image to both alice and bob
+        # Process rendezvous point
         rendezvous_pano = self.metainfo['rendezvous point']
-        time_index = len(alice_points)  # Add to the end of the list
-        rendezvous_image_list_for_alice = []
-        rendezvous_image_list_for_bob = []
-        for view_label in HEADING_ORDER:
-            rendezvous_img_path_for_alice = os.path.join(self.place_folder, f'id_{rendezvous_pano}_{view_label}.jpg')
-            if os.path.exists(rendezvous_img_path_for_alice):
-                rendezvous_image_for_alice = {
-                    'agent': 'Alice',
-                    'time': time_index, 
-                    'heading': view_label,
-                    'filename': os.path.join(f'place{self.place_id}', f'id_{rendezvous_pano}_{view_label}.jpg').replace('\\', '/')
-                }
-                rendezvous_image_list_for_alice.append(rendezvous_image_for_alice)
-
-            bob_view_label = Bob_HEADING_ORDER_MAPPING[view_label]
-            rendezvous_img_path_for_bob = os.path.join(self.place_folder, f'id_{rendezvous_pano}_{bob_view_label}.jpg')
-            if os.path.exists(rendezvous_img_path_for_bob):
-                rendezvous_image_for_bob = {
-                    'agent': 'Bob',
-                    'time': time_index,
-                    'heading': view_label,
-                    'filename': os.path.join(f'place{self.place_id}', f'id_{rendezvous_pano}_{bob_view_label}.jpg').replace('\\', '/')
-                }
-                rendezvous_image_list_for_bob.append(rendezvous_image_for_bob)
-
+        time_idx = len(alice_points)  # Add to the end of the list
+        
         processed_groups.append({
-            'time': time_index,
-            'alice': rendezvous_image_list_for_alice,
-            'bob': rendezvous_image_list_for_bob
+            'time': time_idx,
+            'alice': self._process_agent_images(rendezvous_pano, 'Alice'),
+            'bob': self._process_agent_images(rendezvous_pano, 'Bob')
         })
 
         return processed_groups
 
-    def load_answers(self):
+    def load_answers(self) -> Dict:
         """Load answers from the json file"""
         answer_file = os.path.join(self.traj_folder, 'answer.json')
         if os.path.exists(answer_file):
@@ -150,7 +131,7 @@ class GoogleDataAnnotator:
             answers = {}
         return answers
 
-    def process_images_and_answers(self):
+    def process_images_and_answers(self) -> List[Dict]:
         """Load and process the images data and answers"""
         image_groups = self.process_images()
         answers = self.load_answers()
@@ -177,7 +158,7 @@ class GoogleDataAnnotator:
         
         return processed_groups
 
-    def parse_line(self, line):
+    def parse_line(self, line: str) -> Dict:
         """Parse a single line of data and return a dictionary"""
         result = {}
         pattern = re.compile(
@@ -212,7 +193,10 @@ class GoogleDataAnnotator:
         
         return result
 
-    def txt_to_json(self, input_file, output_file):
+    def txt_to_json(self,
+            input_file: str,
+            output_file: str
+        ) -> None:
         """Convert the entire txt file to json"""
         final_result = {}
         
