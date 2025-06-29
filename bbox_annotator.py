@@ -322,7 +322,6 @@ class BoundingBoxAnnotator:
             self.thumbnail_canvas.yview_scroll(-1, "units")
         elif event.num == 5 or (hasattr(event, 'delta') and event.delta < 0):
             self.thumbnail_canvas.yview_scroll(1, "units")
-        
         return "break"
 
     def on_mode_change(self):
