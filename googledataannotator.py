@@ -4,6 +4,7 @@ import json
 import re
 from typing import List, Tuple, Dict
 import argparse
+import webbrowser  # 添加导入
 
 app = Flask(__name__)
 
@@ -163,12 +164,12 @@ class GoogleDataAnnotator:
         result = {}
         pattern = re.compile(
             r"(?P<id>\d+)\|"
-            r"(?P<detection>[^|]+)\|"
-            r"Alice:(?P<alice_orientation>[^|]+)\|"
-            r"Bob:(?P<bob_orientation>[^|]+)\|"
-            r"(?P<conclusion>[^|]+)\|"
-            r"Alice_action:(?P<alice_action>\w+)\|"
-            r"Bob_action:(?P<bob_action>\w+)"
+            r"(?P<detection>[^|]*)\|"  # Changed to * to allow empty strings
+            r"Alice:(?P<alice_orientation>[^|]*)\|"  # Changed to * to allow empty strings
+            r"Bob:(?P<bob_orientation>[^|]*)\|"  # Changed to * to allow empty strings
+            r"(?P<conclusion>[^|]*)\|"  # Changed to * to allow empty strings
+            r"Alice_action:(?P<alice_action>\w+)\|"  # Keep + to require non-empty action
+            r"Bob_action:(?P<bob_action>\w+)"  # Keep + to require non-empty action
         )
         
         match = pattern.match(line)
@@ -223,14 +224,36 @@ def handle_label(annotator):
     current_group_index = int(request.args.get('group', 0))
     
     if request.method == 'POST':
+        # Get form data
+        alice_action = request.form.get('alice_action', '')
+        bob_action = request.form.get('bob_action', '')
+        
+        # Validate that actions cannot be empty
+        if not alice_action or not bob_action:
+            current_group_index = min(current_group_index, len(image_groups) - 1)
+            current_group = image_groups[current_group_index]
+            route_image = os.path.join(annotator.traj_folder, 'route_0.png').replace('\\', '/')
+            
+            error_message = "Actions for Alice and Bob cannot be empty!"
+            return render_template('index.html',
+                             alice_images=current_group['alice'],
+                             bob_images=current_group['bob'],
+                             current_time=current_group['time'],
+                             action_choices=ACTION_CHOICES,
+                             current_group_index=current_group_index,
+                             total_groups=len(image_groups),
+                             route_image=route_image,
+                             error_message=error_message)
+        
+        # All other fields can be empty, just get them as they are
         data = {
-            'time': request.form['time'],
-            'landmark': request.form['landmark'],
-            'alice_direction': request.form['alice_direction'],
-            'bob_direction': request.form['bob_direction'],
-            'conclusion': request.form['conclusion'],
-            'alice_action': request.form['alice_action'],
-            'bob_action': request.form['bob_action']
+            'time': request.form.get('time', ''),
+            'landmark': request.form.get('landmark', ''),
+            'alice_direction': request.form.get('alice_direction', ''),
+            'bob_direction': request.form.get('bob_direction', ''),
+            'conclusion': request.form.get('conclusion', ''),
+            'alice_action': alice_action,
+            'bob_action': bob_action
         }
 
         output_file = os.path.join(annotator.traj_folder, 'answer_user.txt')
@@ -245,10 +268,12 @@ def handle_label(annotator):
             f.write(f"Bob_action:{data['bob_action']}\n")
         
         if current_group_index + 1 < len(image_groups):
+            # Redirect to the next group
+            next_group_index = current_group_index + 1
             return redirect(url_for('handle_request', 
                                 seed=annotator.seed,
                                 mode='label',
-                                group=current_group_index + 1))
+                                group=next_group_index))
         else:
             return "All image groups have been annotated!"
     
@@ -256,7 +281,12 @@ def handle_label(annotator):
     current_group = image_groups[current_group_index]
     
     print(current_group_index, len(image_groups))
-    route_image = os.path.join(annotator.traj_folder, f'route_{current_group_index}.png').replace('\\', '/')
+    # 始终使用route_0.png作为路由图片
+    route_image = os.path.join(annotator.traj_folder, 'route_0.png').replace('\\', '/')
+    
+    # Pre-select the first action as default for both Alice and Bob
+    default_action = ACTION_CHOICES[0] if ACTION_CHOICES else ""
+    
     return render_template('index.html',
                          alice_images=current_group['alice'],
                          bob_images=current_group['bob'],
@@ -264,7 +294,9 @@ def handle_label(annotator):
                          action_choices=ACTION_CHOICES,
                          current_group_index=current_group_index,
                          total_groups=len(image_groups),
-                         route_image=route_image)
+                         route_image=route_image,
+                         default_action=default_action,
+                         seed=annotator.seed)
 
 def handle_convert(annotator):
     """Convert the answer_user.txt to answer.json"""
@@ -290,7 +322,8 @@ def handle_view(annotator):
     next_group_url = url_for('handle_request', seed=annotator.seed, mode='view', group=current_group_index + 1) if current_group_index < len(image_groups) - 1 else None
     
     print(current_group_index, len(image_groups))
-    route_image = os.path.join(annotator.traj_folder, f'route_{current_group_index}.png').replace('\\', '/')
+    # 始终使用route_0.png作为路由图片
+    route_image = os.path.join(annotator.traj_folder, 'route_0.png').replace('\\', '/')
     return render_template('viewer.html',
                          alice_images=current_group['alice'],
                          bob_images=current_group['bob'],
@@ -317,8 +350,16 @@ def handle_request(seed, mode):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Google Data Annotator")
     parser.add_argument("--seed", type=int, default=0, help="Trajectory seed number")
-    parser.add_argument("--mode", choices=['web', 'convert'], help="Mode of operation: web for web interface, convert only for converting txt to json")
+    parser.add_argument("--mode", choices=['web', 'convert', 'open'], default='open', 
+                        help="Mode of operation: web for web interface, convert for converting txt to json, open for directly opening URL")
+    parser.add_argument("--view_mode", choices=['label', 'view', 'convert'], default='label', 
+                        help="View mode when using 'open': label for annotation, view for viewing, convert for conversion")
+    parser.add_argument("--port", type=int, default=5000, help="Port for the web server")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host for the web server")
+    parser.add_argument("--no_browser", action='store_true', help="Do not open browser automatically")
     args = parser.parse_args()
+    
+    base_url = f"http://{args.host}:{args.port}"
     
     if args.mode == 'convert':
         input_file = os.path.join(TEXTDATA_FOLDER, f'traj{args.seed}', 'answer_user.txt')
@@ -326,5 +367,43 @@ if __name__ == '__main__':
         annotator = GoogleDataAnnotator(TEXTDATA_FOLDER, GOOGLE_DATA_FOLDER, args.seed)
         annotator.txt_to_json(input_file, output_file)
         print(f"Converted {input_file} to {output_file}")
+    elif args.mode == 'open':
+        # 直接打开URL模式
+        target_url = f"{base_url}/{args.seed}/{args.view_mode}"
+        print(f"Opening URL: {target_url}")
+        
+        # 开始服务器（在后台运行）
+        from threading import Thread
+        server_thread = Thread(target=app.run, kwargs={'host': args.host, 'port': args.port, 'debug': False})
+        server_thread.daemon = True
+        server_thread.start()
+        
+        # 打开浏览器（可选）
+        if not args.no_browser:
+            webbrowser.open(target_url)
+            
+        # 保持主线程运行，直到用户按下Ctrl+C
+        try:
+            while True:
+                import time
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nServer stopped by user")
     else:
-        app.run(debug=True)
+        # 显示可用URL信息
+        label_url = f"{base_url}/{args.seed}/label"
+        view_url = f"{base_url}/{args.seed}/view"
+        convert_url = f"{base_url}/{args.seed}/convert"
+        
+        print(f"Server running at {base_url}")
+        print(f"Available URLs:")
+        print(f"- Annotation: {label_url}")
+        print(f"- Viewing: {view_url}")
+        print(f"- Convert: {convert_url}")
+        
+        # 如果不是禁用浏览器，则自动打开对应URL
+        if not args.no_browser:
+            webbrowser.open(f"{base_url}/{args.seed}/{args.view_mode}")
+        
+        # 启动Web服务器
+        app.run(debug=True, host=args.host, port=args.port)

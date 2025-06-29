@@ -157,22 +157,22 @@
         <div class="form-section">
             <div class="form-group">
                 <label for="landmark">Landmark:</label>
-                <input type="text" id="landmark" name="landmark" required>
+                <input type="text" id="landmark" name="landmark">
             </div>
             
             <div class="form-group">
                 <label for="alice_direction">Alice's Direction Description:</label>
-                <input type="text" id="alice_direction" name="alice_direction" required>
+                <input type="text" id="alice_direction" name="alice_direction">
             </div>
             
             <div class="form-group">
                 <label for="bob_direction">Bob's Direction Description:</label>
-                <input type="text" id="bob_direction" name="bob_direction" required>
+                <input type="text" id="bob_direction" name="bob_direction">
             </div>
             
             <div class="form-group">
                 <label for="conclusion">Conclusion:</label>
-                <textarea id="conclusion" name="conclusion" required></textarea>
+                <textarea id="conclusion" name="conclusion"></textarea>
             </div>
         </div>
         
@@ -181,7 +181,7 @@
                 <label for="alice_action">Alice's Action:</label>
                 <select id="alice_action" name="alice_action" required>
                     {% for action in action_choices %}
-                    <option value="{{ action }}">{{ action }}</option>
+                    <option value="{{ action }}" {% if action == default_action %}selected{% endif %}>{{ action }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -190,7 +190,7 @@
                 <label for="bob_action">Bob's Action:</label>
                 <select id="bob_action" name="bob_action" required>
                     {% for action in action_choices %}
-                    <option value="{{ action }}">{{ action }}</option>
+                    <option value="{{ action }}" {% if action == default_action %}selected{% endif %}>{{ action }}</option>
                     {% endfor %}
                 </select>
             </div>
