@@ -85,7 +85,7 @@ class GoogleDataAnnotator:
             if os.path.exists(img_path):
                 images.append({
                     'heading': view_label,  # Keep original label for display consistency
-                    'filename': os.path.join(f'place{self.place_id}', f'id_{pano_id}_{actual_view}.jpg').replace('\\', '/')
+                    'filename': img_path.replace('\\', '/')
                 })
         
         return self.sort_by_heading(images)
@@ -210,10 +210,10 @@ class GoogleDataAnnotator:
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(final_result, f, indent=4, ensure_ascii=False)
 
-@app.route(f'/{GOOGLE_DATA_FOLDER}/<path:filename>')
+@app.route(f'/<path:filename>')
 def custom_static(filename):
     """Serve static files from the googledata folder"""
-    return send_from_directory(GOOGLE_DATA_FOLDER, filename)
+    return send_from_directory('.', filename)
 
 def handle_label(annotator):
     image_groups = annotator.process_images()
@@ -256,13 +256,15 @@ def handle_label(annotator):
     current_group = image_groups[current_group_index]
     
     print(current_group_index, len(image_groups))
+    route_image = os.path.join(annotator.traj_folder, f'route_{current_group_index}.png').replace('\\', '/')
     return render_template('index.html',
                          alice_images=current_group['alice'],
                          bob_images=current_group['bob'],
                          current_time=current_group['time'],
                          action_choices=ACTION_CHOICES,
                          current_group_index=current_group_index,
-                         total_groups=len(image_groups))
+                         total_groups=len(image_groups),
+                         route_image=route_image)
 
 def handle_convert(annotator):
     """Convert the answer_user.txt to answer.json"""
@@ -288,6 +290,7 @@ def handle_view(annotator):
     next_group_url = url_for('handle_request', seed=annotator.seed, mode='view', group=current_group_index + 1) if current_group_index < len(image_groups) - 1 else None
     
     print(current_group_index, len(image_groups))
+    route_image = os.path.join(annotator.traj_folder, f'route_{current_group_index}.png').replace('\\', '/')
     return render_template('viewer.html',
                          alice_images=current_group['alice'],
                          bob_images=current_group['bob'],
@@ -296,7 +299,8 @@ def handle_view(annotator):
                          total_groups=len(image_groups),
                          seed=annotator.seed,
                          prev_group_url=prev_group_url,
-                         next_group_url=next_group_url)
+                         next_group_url=next_group_url,
+                         route_image=route_image)
 
 @app.route('/<int:seed>/<string:mode>', methods=['GET', 'POST'])
 def handle_request(seed, mode):

@@ -8,7 +8,7 @@ import time
 import tempfile
 import webbrowser
 from typing import List, Tuple, Dict
-from data_utils import calculate_bearing, parse_pano_json_to_list
+from data_utils import calculate_bearing, parse_pano_json_to_list, html_to_screenshot
 
 class GoogleDataProcessor:
     def __init__(self, seed: int, api_key: str):
@@ -188,8 +188,9 @@ class GoogleDataProcessor:
             rendezvous_point: Tuple[str, Tuple[float, float]],
             alice_points_list: List[Tuple[str, Tuple[float, float]]],
             bob_points_list: List[Tuple[str, Tuple[float, float]]], 
-            traj_id: int
-        ) -> None:
+            traj_id: int,
+            time_index: int = None
+        ) -> str:
         """
         Plot route on a map using Folium and save to HTML file
         
@@ -198,62 +199,73 @@ class GoogleDataProcessor:
             alice_points_list: List of tuples with (pano_id, (lat, lng))
             bob_points_list: List of tuples with (pano_id, (lat, lng))
             traj_id: Trajectory ID for saving the output file
+            time_index: Index of points to highlight with special markers (optional)
         """
-        # Create map centered on the first coordinate
-        rendezvous_point_pano_id, rendezvous_point_location = rendezvous_point
-        m = folium.Map(location=rendezvous_point_location, zoom_start=20)
+        def add_points_to_map(points_list: List[Tuple[str, Tuple[float, float]]], 
+                             color: str, 
+                             agent: str,
+                             time_index: int = None,
+                             rendezvous_point_location: Tuple[float, float] = None) -> None:
+            """Helper function to add points and polylines to the map"""
+            coords = []
+            for i, (pano_id, coord) in enumerate(points_list):
+                coords.append(coord)
+                if time_index is not None and i == time_index:
+                    folium.Marker(
+                        location=coord,
+                        popup=f'{agent} Time Index {pano_id}',
+                        icon=folium.Icon(
+                            color='blue' if agent == 'Alice' else 'purple',
+                            icon='star',  # 可以指定图标类型，如 'star', 'info-sign' 等
+                            # icon_size=(20, 20)  # 设置图标大小 (宽度, 高度)
+                        )
+                    ).add_to(m)
+                else:
+                    folium.CircleMarker(
+                        location=coord,
+                        radius=5,
+                        color=color,
+                        fill=True,
+                        fill_color=color,
+                        popup=f'{agent} {pano_id}'
+                    ).add_to(m)
+            
+            # Add the routes as polylines (connecting to rendezvous point)
+            folium.PolyLine(
+                locations=coords + [rendezvous_point_location],
+                color=color,
+                weight=5,
+                opacity=0.8,
+                tooltip=f"{agent}'s route"
+            ).add_to(m)
+            return None
 
-        # Add markers for start and end points
+        # Create map centered on the rendezvous point
+        rendezvous_point_pano_id, rendezvous_point_location = rendezvous_point
+        if time_index is not None:
+            m = folium.Map(location=rendezvous_point_location, zoom_start=17)
+        else:
+            m = folium.Map(location=rendezvous_point_location, zoom_start=20)
+
+        # Add marker for rendezvous point
         folium.Marker(
             rendezvous_point_location,
-            popup=f'Renderzvous {rendezvous_point_pano_id}',
-            icon=folium.Icon(color='green')
+            popup=f'Rendezvous {rendezvous_point_pano_id}',
+            icon=folium.Icon(color='green', icon='star')
         ).add_to(m)
-        
-        # Add clickable markers for all waypoints (excluding first and last)
-        for pano_id, coord in alice_points_list:
-            folium.CircleMarker(
-                location=coord,
-                radius=5,
-                color='orange',
-                fill=True,
-                fill_color='orange',
-                popup=f'Alice {pano_id}'
-            ).add_to(m)
-        for pano_id, coord in bob_points_list:
-            folium.CircleMarker(
-                location=coord,
-                radius=5,
-                color='red',
-                fill=True,
-                fill_color='red',
-                popup=f'Bob {pano_id}'
-            ).add_to(m)
 
-        alice_polyline_coords = [coord for _, coord in alice_points_list]
-        alice_polyline_coords.append(rendezvous_point_location)
-        bob_polyline_coords = [coord for _, coord in bob_points_list]
-        bob_polyline_coords.append(rendezvous_point_location)
-        # Add the route as a polyline
-        folium.PolyLine(
-            locations=alice_polyline_coords,
-            color='orange',
-            weight=5,
-            opacity=0.8,
-            tooltip="orange"
-        ).add_to(m)
-        folium.PolyLine(
-            locations=bob_polyline_coords,
-            color='red',
-            weight=5,
-            opacity=0.8,
-            tooltip="red"
-        ).add_to(m)
-        
-        # Save to HTML file in the data directory
-        full_output_path = f'./textdata/traj{traj_id}/route.html'
+        # Add points and get coordinates for polylines
+        add_points_to_map(alice_points_list, 'orange', 'Alice', time_index, rendezvous_point_location)
+        add_points_to_map(bob_points_list, 'red', 'Bob', time_index, rendezvous_point_location)
+
+        # Save to HTML file
+        if time_index is not None:
+            full_output_path = f'./textdata/traj{traj_id}/tmp_route_{time_index}.html'
+        else:
+            full_output_path = f'./textdata/traj{traj_id}/route.html'
         m.save(full_output_path)
         print(f"Route plotted and saved to {full_output_path}")
+        return full_output_path
 
     def write_traj_metainfo(self, traj_id: int = -1, 
                             stride: int = 1, 
@@ -316,11 +328,13 @@ class GoogleDataProcessor:
         # reverse the Bob's points list
         bob_points_list.reverse()
         # Balance the lengths by extending with last point
+        # in practice, it means one of the agent comes later than the other
+        # the other need to wait at the rendezvous point
         len_diff = len(alice_points_list) - len(bob_points_list)
         if len_diff > 0:
-            bob_points_list.extend([bob_points_list[-1]] * len_diff)
+            bob_points_list.extend([rendezvous_point] * len_diff)
         elif len_diff < 0:
-            alice_points_list.extend([alice_points_list[-1]] * (-len_diff))
+            alice_points_list.extend([rendezvous_point] * (-len_diff))
 
         # save all the information to a json file
         metainfo = {
@@ -336,14 +350,31 @@ class GoogleDataProcessor:
         with open(metainfo_path, 'w', encoding='utf-8') as f:
             json.dump(metainfo, f, indent=4, ensure_ascii=False)
         print(f"Saved trajectory metainfo to {metainfo_path} with stride {stride}")
-
+        
         # plot the route
-        self.plot_route(
+        html_path = self.plot_route(
             rendezvous_point=rendezvous_point,
             alice_points_list=alice_points_list,
             bob_points_list=bob_points_list,
             traj_id=traj_id,
         )
+
+        for time_index in range(1):
+            # plot the route with time index
+            html_path = self.plot_route(
+                rendezvous_point=rendezvous_point,
+                alice_points_list=alice_points_list,
+                bob_points_list=bob_points_list,
+                traj_id=traj_id,
+                time_index=time_index
+            )
+            print(f"Plotted route with time index {time_index} for trajectory {traj_id}")
+
+            # convert the html to screenshot
+            output_file = f'./textdata/traj{traj_id}/route_{time_index}.png'
+            html_to_screenshot(html_path, output_file)
+            # delete the html file
+            os.remove(html_path)
 
     def set_api_key(self, api_key: str) -> None:
         """Set Google Maps API key"""

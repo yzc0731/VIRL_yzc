@@ -1,7 +1,13 @@
 import math
 import os
 import json
+import time
 from typing import List, Dict, Tuple
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
+from typing import Tuple
 
 def calculate_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """
@@ -71,3 +77,47 @@ def parse_pano_json_to_list(json_path: str) -> List[Tuple[str, Tuple[float, floa
     nodes = data['nodes']
     points_list = [(pano_id, (info['lat'], info['lng'])) for pano_id, info in nodes.items()]
     return points_list
+
+def html_to_screenshot(
+        html_file_path: str,
+        output_file: str,
+        window_size: Tuple[int, int] = (512, 512),
+    ) -> None:
+    """
+    Open an HTML file and create a screenshot of it.
+
+    Args:
+        html_file_path: Path to the HTML file to be rendered.
+        output_file: Output image file path (default: 'screenshot.png').
+        window_size: Browser window size (width, height) for screenshot (default: 800x600).
+    """
+    # Verify the input file exists
+    if not os.path.exists(html_file_path):
+        raise FileNotFoundError(f"HTML file not found: {html_file_path}")
+    
+    # Use selenium to take a screenshot
+    options = Options()
+    options.add_argument("--headless")  # Run in background
+    options.add_argument(f"--window-size={window_size[0]},{window_size[1]}")
+    
+    try:
+        service = Service(ChromeDriverManager().install())
+        options = webdriver.ChromeOptions()
+        options.add_argument("--headless")
+        options.add_argument(f"--window-size={window_size[0]},{window_size[1]}")
+        options.add_experimental_option('excludeSwitches', ['enable-logging'])
+        
+        driver = webdriver.Chrome(service=service, options=options)
+        absolute_path = os.path.abspath(html_file_path)
+        driver.get(f"file://{absolute_path}")
+        time.sleep(1)  # Wait for page to load
+        
+        driver.save_screenshot(output_file)
+        driver.quit()
+        
+        print(f"Screenshot saved to {output_file}")
+    except Exception as e:
+        print(f"Error creating screenshot: {str(e)}")
+        if 'driver' in locals():
+            driver.quit()
+        raise

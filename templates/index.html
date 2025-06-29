@@ -102,6 +102,21 @@
     Current Processing: {{ current_group_index + 1 }}/{{ total_groups }}
     </div>
 
+    <!-- 新增路线图片部分 -->
+    <div class="image-section">
+        <div class="agent-title">Route Overview</div>
+        <div class="image-row">
+            <div class="image-box">
+                <img src="{{ url_for('custom_static', filename=route_image) }}" 
+                     alt="Route Overview"
+                     onerror="this.onerror=null;this.src=''">
+                <div class="image-info">
+                    Route at time {{ current_time }}
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Alice's Images -->
     <div class="image-section">
         <div class="agent-title">Alice's Perspective</div>
