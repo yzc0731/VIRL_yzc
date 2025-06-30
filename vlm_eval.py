@@ -103,8 +103,8 @@ Please answer in JSON format as follows:
         "Conclusion": "Analysis of their spatial relationship and recommended action plan"
     },
     "Answer": {
-        "Alice": "Recommended next action for Alice (only use one of these exact words: forward, turn left, turn right, turn backward, stay)",
-        "Bob": "Recommended next action for Bob (only use one of these exact words: forward, turn left, turn right, turn backward, stay)"
+        "Alice": "Recommended next action for Alice (only use one of these exact words: forward, turn left, turn right, turn backward, stop)",
+        "Bob": "Recommended next action for Bob (only use one of these exact words: forward, turn left, turn right, turn backward, stop)"
     }
 }
             """
@@ -795,8 +795,21 @@ Do not include any explanations or reasoning in your response, just the JSON wit
             trajs = []
             for item in os.listdir(self.textdata_folder):
                 traj_dir = os.path.join(self.textdata_folder, item)
-                if os.path.isdir(traj_dir) and os.path.exists(os.path.join(traj_dir, 'answer.json')):
-                    trajs.append(item)
+                if os.path.isdir(traj_dir):
+                    answer_path = os.path.join(traj_dir, 'answer.json')
+                    if os.path.exists(answer_path):
+                        trajs.append(item)
+                    else:
+                        print(f"Warning: Trajectory {item} has no answer.json file, skipping.")
+        
+        # Print evaluation session information
+        print(f"\n=== Evaluation Session Started ===")
+        print(f"Model: {self.model}")
+        print(f"Augmentation: {'Enabled' if self.use_augmentation else 'Disabled'}")
+        print(f"Include thought: {'Yes' if self.include_thought else 'No'}")
+        print(f"Resume mode: {'Enabled' if self.resume_eval else 'Disabled'}")
+        print(f"Found {len(trajs)} trajectories with answer.json")
+        print(f"============================\n")
         
         # Check if overall results already exist and we should resume evaluation
         results_path = os.path.join(self.output_dir, "overall_results.json")
@@ -820,11 +833,15 @@ Do not include any explanations or reasoning in your response, just the JSON wit
                         if os.path.exists(traj_results_path):
                             with open(traj_results_path, 'r', encoding='utf-8') as f:
                                 traj_data = json.load(f)
-                                gt_data = self._load_ground_truth(traj)
-                                # If all pairs have been evaluated, mark as completed
-                                if len(traj_data.get("results", {})) == len(gt_data):
-                                    completed_trajs.append(traj)
-                                    print(f"Trajectory {traj} is already fully evaluated.")
+                                try:
+                                    gt_data = self._load_ground_truth(traj)
+                                    # If all pairs have been evaluated, mark as completed
+                                    if len(traj_data.get("results", {})) == len(gt_data):
+                                        completed_trajs.append(traj)
+                                        print(f"Trajectory {traj} is already fully evaluated.")
+                                except FileNotFoundError:
+                                    print(f"Warning: Trajectory {traj} has no answer.json file, skipping.")
+                                    completed_trajs.append(traj)  # Add to completed to skip it
                 
                 # Remove completed trajectories from the list to evaluate
                 for traj in completed_trajs:
@@ -857,6 +874,13 @@ Do not include any explanations or reasoning in your response, just the JSON wit
         # Now evaluate the remaining trajectories
         for traj in trajs:
             try:
+                # Check if answer.json exists before attempting evaluation
+                traj_folder = f"traj{traj}" if traj.isdigit() else traj
+                answer_path = os.path.join(self.textdata_folder, traj_folder, 'answer.json')
+                if not os.path.exists(answer_path):
+                    print(f"Warning: Trajectory {traj} has no answer.json file, skipping.")
+                    continue
+                    
                 result = self.evaluate_trajectory(traj)
                 traj_id = f"traj{traj}" if traj.isdigit() else traj
                 
@@ -887,6 +911,8 @@ Do not include any explanations or reasoning in your response, just the JSON wit
                         "trajectory_metrics": trajectory_results
                     }, f, indent=2, ensure_ascii=False)
                 
+            except FileNotFoundError:
+                print(f"Error: Trajectory {traj} answer.json not found, skipping.")
             except Exception as e:
                 print(f"Error evaluating trajectory {traj}: {str(e)}")
         
@@ -901,6 +927,16 @@ Do not include any explanations or reasoning in your response, just the JSON wit
         else:
             final_overall_metrics["accuracy"] = 0
         
+        # Save session log
+        log_file = os.path.join(self.output_dir, "evaluation_log.txt")
+        with open(log_file, 'a', encoding='utf-8') as f:
+            import datetime
+            f.write(f"=== Evaluation at {datetime.datetime.now()} ===\n")
+            f.write(f"Model: {self.model}\n")
+            f.write(f"Parameters: augmentation={self.use_augmentation}, include_thought={self.include_thought}\n")
+            f.write(f"Processed {len(trajs)} trajectories\n")
+            f.write(f"Cumulative accuracy: {final_overall_metrics['accuracy']:.4f} ({final_overall_metrics['correct']}/{final_overall_metrics['total']})\n\n")
+        
         # Save overall evaluation results
         with open(results_path, 'w', encoding='utf-8') as f:
             json.dump({
@@ -910,6 +946,7 @@ Do not include any explanations or reasoning in your response, just the JSON wit
         
         print(f"\nOverall accuracy: {final_overall_metrics['accuracy']:.4f} ({final_overall_metrics['correct']}/{final_overall_metrics['total']})")
         print(f"Detailed results saved to: {results_path}")
+        print(f"Session log appended to: {log_file}")
         
         return {
             "overall_metrics": final_overall_metrics,
@@ -931,7 +968,7 @@ def main():
     parser.add_argument('--image_width', type=int, default=None, help='Width to resize images (default: original size)')
     parser.add_argument('--image_height', type=int, default=None, help='Height to resize images (default: original size)')
     parser.add_argument('--image_quality', type=int, default=85, help='JPEG quality for image compression (0-100, default: 85)')
-    parser.add_argument('--request_delay', type=float, default=0.0, help='Delay in seconds between API requests (default: 0.0)')
+    parser.add_argument('--request_delay', type=float, default=5.0, help='Delay in seconds between API requests (default: 0.0)')
     parser.add_argument('--no_resume', action='store_true', help='Disable resuming from previous evaluation results (default: resume enabled)')
     parser.add_argument('--visualize', action='store_true', help='Generate visualization images for evaluation results (default: False)')
     

@@ -240,7 +240,7 @@ Suppose my friend Bob and I (my name is Alice) are not far apart in the city. Am
 
 Please plan a route so that my friend Bob and I can move toward each other and meet up. You should analyze what landmarks are in the scene, which must be seen from the view of both of us. You don't need to know its exact name. Just describe its attributes and estimate our relative positions to it and the orientation of the front camera.
 
-The final answer should be summarized into the following JSON format. The {Action} is chosen from ['forward', 'turn left', 'turn right', 'turn backward', 'stay'].
+The final answer should be summarized into the following JSON format. The {Action} is chosen from ['forward', 'turn left', 'turn right', 'turn backward', 'stop'].
 
 You will be given JSON format bounding boxes describing the coordinates and corresponding descriptions that can help you complete the rendezvous. You can also consider other landmarks that are helpful for localization and rendezvous. You can refine the description if needed.
 

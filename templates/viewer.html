@@ -53,6 +53,23 @@
             font-size: 12px;
             color: #666;
         }
+        .route-legend {
+            margin-top: 5px;
+            padding: 5px;
+            background-color: #f8f8f8;
+            border: 1px solid #eee;
+            border-radius: 3px;
+            display: inline-block;
+        }
+        .route-legend span {
+            font-size: 16px;
+            margin: 0 5px;
+            vertical-align: middle;
+        }
+        .legend-item {
+            margin: 0 10px;
+            display: inline-block;
+        }
         .answer-section {
             margin: 30px 0;
             padding: 20px;
@@ -122,6 +139,10 @@
                      onerror="this.onerror=null;this.src=''">
                 <div class="image-info">
                     Route at time {{ current_time }}
+                    <div style="margin-top: 5px;">
+                        <span style="color: orange; font-weight: bold;">■ Alice</span> 
+                        <span style="color: red; font-weight: bold; margin-left: 10px;">■ Bob</span>
+                    </div>
                 </div>
             </div>
         </div>

@@ -4,7 +4,7 @@ import json
 import re
 from typing import List, Tuple, Dict
 import argparse
-import webbrowser  # 添加导入
+import webbrowser  # Add import
 
 app = Flask(__name__)
 
@@ -211,6 +211,27 @@ class GoogleDataAnnotator:
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(final_result, f, indent=4, ensure_ascii=False)
 
+    def get_last_annotated_time(self):
+        """Get the last annotated time from answer_user.txt"""
+        answer_user_file = os.path.join(self.traj_folder, 'answer_user.txt')
+        if not os.path.exists(answer_user_file):
+            return -1  # No annotations yet
+        
+        last_time = -1
+        with open(answer_user_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        time_str = line.split('|')[0]
+                        time = int(time_str)
+                        last_time = max(last_time, time)
+                    except (ValueError, IndexError):
+                        # Skip malformed lines
+                        continue
+        
+        return last_time
+
 @app.route(f'/<path:filename>')
 def custom_static(filename):
     """Serve static files from the googledata folder"""
@@ -221,7 +242,14 @@ def handle_label(annotator):
     if not image_groups:
         return f"No valid image group"
 
-    current_group_index = int(request.args.get('group', 0))
+    # If URL does not provide a group parameter, try to start from the last annotated position
+    if 'group' not in request.args:
+        last_time = annotator.get_last_annotated_time()
+        current_group_index = last_time + 1  # Start from the next time point
+        if current_group_index >= len(image_groups):
+            current_group_index = len(image_groups) - 1  # If all annotated, start from the last one
+    else:
+        current_group_index = int(request.args.get('group', 0))
     
     if request.method == 'POST':
         # Get form data
@@ -281,7 +309,7 @@ def handle_label(annotator):
     current_group = image_groups[current_group_index]
     
     print(current_group_index, len(image_groups))
-    # 始终使用route_0.png作为路由图片
+    # Always use route_0.png as the route image
     route_image = os.path.join(annotator.traj_folder, 'route_0.png').replace('\\', '/')
     
     # Pre-select the first action as default for both Alice and Bob
@@ -322,7 +350,7 @@ def handle_view(annotator):
     next_group_url = url_for('handle_request', seed=annotator.seed, mode='view', group=current_group_index + 1) if current_group_index < len(image_groups) - 1 else None
     
     print(current_group_index, len(image_groups))
-    # 始终使用route_0.png作为路由图片
+    # Always use route_0.png as the route image
     route_image = os.path.join(annotator.traj_folder, 'route_0.png').replace('\\', '/')
     return render_template('viewer.html',
                          alice_images=current_group['alice'],
@@ -368,21 +396,21 @@ if __name__ == '__main__':
         annotator.txt_to_json(input_file, output_file)
         print(f"Converted {input_file} to {output_file}")
     elif args.mode == 'open':
-        # 直接打开URL模式
+        # Direct URL opening mode
         target_url = f"{base_url}/{args.seed}/{args.view_mode}"
         print(f"Opening URL: {target_url}")
         
-        # 开始服务器（在后台运行）
+        # Start server (run in background)
         from threading import Thread
         server_thread = Thread(target=app.run, kwargs={'host': args.host, 'port': args.port, 'debug': False})
         server_thread.daemon = True
         server_thread.start()
         
-        # 打开浏览器（可选）
+        # Open browser (optional)
         if not args.no_browser:
             webbrowser.open(target_url)
             
-        # 保持主线程运行，直到用户按下Ctrl+C
+        # Keep main thread running until user presses Ctrl+C
         try:
             while True:
                 import time
@@ -390,7 +418,7 @@ if __name__ == '__main__':
         except KeyboardInterrupt:
             print("\nServer stopped by user")
     else:
-        # 显示可用URL信息
+        # Display available URL information
         label_url = f"{base_url}/{args.seed}/label"
         view_url = f"{base_url}/{args.seed}/view"
         convert_url = f"{base_url}/{args.seed}/convert"
@@ -401,9 +429,9 @@ if __name__ == '__main__':
         print(f"- Viewing: {view_url}")
         print(f"- Convert: {convert_url}")
         
-        # 如果不是禁用浏览器，则自动打开对应URL
+        # If not disabling browser, automatically open corresponding URL
         if not args.no_browser:
             webbrowser.open(f"{base_url}/{args.seed}/{args.view_mode}")
         
-        # 启动Web服务器
+        # Start web server
         app.run(debug=True, host=args.host, port=args.port)
