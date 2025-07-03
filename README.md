@@ -216,3 +216,197 @@ The final directory will like this:
         ├── ...
     ├── ...
 ```
+
+### Step6: Automated Data Processing Workflow
+
+For more efficient data processing, you can use the automated workflow tools to handle multiple steps at once.
+
+#### Autonomous Processing
+
+The `autonomous_processing.py` script enables batch processing of Google Street View data and automatic trajectory creation:
+
+```shell
+python autonomous_processing.py --api-key YOUR_API_KEY --process-url --download --create-trajectory
+```
+
+Key features:
+- **Process multiple place folders**: automatically handles all places with images or specified places
+- **Create trajectories in batch**: generates multiple trajectories with configurable parameters
+- **Flexible configuration**: specify stride, starting trajectory ID, and rendezvous points
+
+Available options:
+- `--process-url`: Process URL files to create pano.json
+- `--download`: Download street view images for all specified places
+- `--create-trajectory`: Create trajectories from the downloaded data
+- `--place-ids`: Comma-separated list of place IDs to process (e.g., "0,1,3")
+- `--traj-id`: Starting trajectory ID for creation (defaults to highest existing + 1)
+- `--stride`: Stride for trajectory creation (default: 2)
+- `--pano-id`: Optional rendezvous panorama ID
+
+Example for processing specific places:
+```shell
+python autonomous_processing.py --api-key YOUR_API_KEY --process-url --download --create-trajectory --place-ids "0,1,2"
+```
+
+#### Human Annotation Helper
+
+The `human_annotator_helper.py` script simplifies the annotation process for multiple trajectories:
+
+```shell
+python human_annotator_helper.py --all-trajs
+```
+
+This tool:
+1. Automatically launches the annotation server
+2. Opens the browser for each trajectory in sequence
+3. Monitors annotation progress
+4. Converts answer_user.txt to answer.json
+5. Guides you through the entire annotation process
+
+Trajectory selection options:
+- `--traj-id 5`: Annotate a single trajectory (#5)
+- `--traj-range "0-5"`: Annotate trajectories 0 through 5
+- `--traj-list "0,3,5"`: Annotate specific trajectories
+- `--all-trajs`: Annotate all existing trajectories
+- `--unannotated`: Annotate only trajectories without answer.json
+
+Additional options:
+- `--wait-time 300`: Maximum time to wait for annotations per trajectory (in seconds)
+- `--skip-existing`: Skip trajectories that already have answer.json files
+
+Example for annotating only unannotated trajectories:
+```shell
+python human_annotator_helper.py --unannotated --wait-time 600
+```
+
+The tool will prompt you between trajectories, making it easy to take breaks during the annotation process.
+
+## VLM Evaluation
+
+The VLM (Vision Language Model) evaluation tool allows you to assess the performance of vision-language models on multi-agent navigation tasks. This tool evaluates a model's ability to recommend appropriate actions for two agents (Alice and Bob) based on their street view perspectives.
+
+### Basic Usage
+
+1. **Evaluate a single image pair**:
+   ```bash
+   python vlm_eval.py --traj 0 --pair_id 0
+   ```
+   This evaluates the first pair of images in trajectory 0.
+
+2. **Evaluate all pairs in a trajectory**:
+   ```bash
+   python vlm_eval.py --traj 0
+   ```
+   This evaluates all image pairs in trajectory 0.
+
+3. **Evaluate all trajectories**:
+   ```bash
+   python vlm_eval.py
+   ```
+   This evaluates all trajectories with answer.json files.
+
+### Common Parameters
+
+- `--model`: Specify the OpenAI model to use (default: "gpt-4o-mini")
+- `--textdata_folder`: Specify the text data folder (default: "textdata")
+- `--googledata_folder`: Specify the image folder (default: "googledata")
+- `--output_dir`: Specify the output folder (default: "eval_results")
+- `--include_thought`: Include reasoning process in the prompt
+- `--use_augmentation`: Use data augmentation during evaluation
+- `--visualize`: Generate visualization images of evaluation results
+- `--request_delay`: Delay between API requests in seconds (default: 5.0)
+- `--use_batch`: Enable batch processing for faster evaluation
+- `--batch_size`: Number of requests to batch together (default: 10)
+
+### Resuming Evaluation and Result Accumulation
+
+The tool automatically resumes evaluation and accumulates results across multiple runs:
+
+1. It checks for existing evaluation results in the output directory
+2. It skips trajectories that have already been fully evaluated
+3. For partially evaluated trajectories, it only evaluates the remaining pairs
+4. The overall metrics correctly combine both previous and new results
+
+To disable the resume functionality, use the `--no_resume` flag:
+```bash
+python vlm_eval.py --no_resume
+```
+
+### Handling Missing Files
+
+The tool gracefully handles trajectories without answer.json files:
+
+1. When scanning for trajectories to evaluate, it automatically identifies and skips folders without answer.json files
+2. Warning messages are displayed for skipped trajectories
+3. The evaluation continues with the valid trajectories without interruption
+
+### Evaluation Logs
+
+A detailed log of evaluation sessions is maintained in `eval_results/evaluation_log.txt`, which records:
+
+- Timestamp of each evaluation session
+- Model used for evaluation
+- Parameters (augmentation, include_thought, etc.)
+- Number of trajectories processed
+- Cumulative accuracy metrics
+
+### Output Format
+
+After evaluation, the tool generates:
+
+1. **Trajectory-specific results**: `eval_results/traj{n}/trajectory_results.json` with detailed information for each image pair
+2. **Overall results**: `eval_results/overall_results.json` with aggregated metrics across all trajectories
+3. **Visualizations** (if `--visualize` is enabled): `eval_results/traj{n}/visualizations/eval_{pair_id}.png` showing images, predictions, and ground truth
+
+Example overall_results.json:
+```json
+{
+  "overall_metrics": {
+    "correct": 235,
+    "total": 350,
+    "accuracy": 0.6714
+  },
+  "trajectory_metrics": {
+    "traj0": {
+      "correct": 3,
+      "total": 4,
+      "accuracy": 0.75
+    },
+    "traj1": {
+      "correct": 4,
+      "total": 5,
+      "accuracy": 0.8
+    }
+    // ... other trajectories
+  }
+}
+```
+
+### Advanced Usage
+
+For large-scale evaluations or batch processing, you can set up a sequence of evaluation runs with different parameters:
+
+```bash
+# First evaluate with model A
+python vlm_eval.py --model "gpt-4o-mini" --output_dir "eval_results_model_A"
+
+# Then evaluate with model B (different output directory)
+python vlm_eval.py --model "gpt-4-vision-preview" --output_dir "eval_results_model_B"
+
+# Evaluate with data augmentation
+python vlm_eval.py --use_augmentation --output_dir "eval_results_augmented"
+```
+
+You can also set a longer delay between API requests to avoid rate limits:
+```bash
+python vlm_eval.py --request_delay 10.0
+```
+
+For faster processing of large datasets, use batch processing:
+```bash
+python vlm_eval.py --use_batch --batch_size 20
+```
+
+This sends multiple requests concurrently, significantly reducing total evaluation time. Adjust the batch size based on your API rate limits and available memory.
+
+Note: Results from different output directories will not be automatically combined.
